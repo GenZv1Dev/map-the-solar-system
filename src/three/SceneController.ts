@@ -467,6 +467,29 @@ export class SceneController {
       }
     });
     
+    // Update moon labels to follow their moons
+    const moons = [
+      { planet: 'Earth', moon: 'Moon' },
+      { planet: 'Mars', moon: 'Phobos' },
+      { planet: 'Mars', moon: 'Deimos' },
+      { planet: 'Jupiter', moon: 'Io' },
+      { planet: 'Jupiter', moon: 'Europa' },
+      { planet: 'Jupiter', moon: 'Ganymede' },
+      { planet: 'Jupiter', moon: 'Callisto' },
+      { planet: 'Saturn', moon: 'Titan' },
+      { planet: 'Saturn', moon: 'Enceladus' },
+    ];
+    moons.forEach(({ planet, moon }) => {
+      const position = this.solarSystem.getPosition(`${planet}/${moon}`);
+      if (position) {
+        position.y += 2; // Smaller offset for moons
+        this.labelSystem.updateLabel(moon, position);
+      }
+    });
+    
+    // Update asteroid LOD based on camera distance
+    this.asteroidBelt.updateLOD(this.camera);
+    
     // Update all labels (scale based on camera distance)
     this.labelSystem.update();
     

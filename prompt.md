@@ -186,3 +186,19 @@ flushPassiveEffects @ react-dom_client.js?v=8ff7856c:13404
 performWorkUntilDeadline @ react-dom_client.js?v=8ff7856c:33Understand this error
 App.tsx:80 Selected: Ceres
 App.tsx:80 Selected: Gratia
+
+the 3d labels of the moons are stuck they dont follow their moons
+and help me make the lod level of astreoids much higher when you go close to them and etc I'm currently in 330 fps
+
+nope all the astreoids looks like spheres, I want them to be looking more realistic, also when you are near one it should how you their label but only when you are near it, and also load the moon texture on it only when you are close to it
+
+it works but the scene became a little laggy
+
+initial camera flying speed is way too fast
+
+always show on the bottom right things like the current movement speed, relative earth time moving compared to the time, start from now always like the current data and time for the local area and the move time progress from there the more you see it move in a rate that actually match 365 days per year before it completes a year and every 24 hours actually it will pass 1 round or something whatever is real by default
+
+also in the Asteroids tab the NEO and PHA shows 0
+and the astreoids show km but doesn't say what does it mean say like size or radius, and also for each one add distance to earth, let you sort them by different things, and they all just say $1000.0Q this is a madeup nonsense number I want you to write there teh full big number and add more details about the astreoids
+
+then I want you to add the lava and other things you didn't add from the future.md

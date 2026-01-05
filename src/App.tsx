@@ -34,7 +34,7 @@ function App() {
   // UI state
   const [selectedAsteroid, setSelectedAsteroid] = useState<Asteroid | null>(null);
   const [isControlsLocked, setIsControlsLocked] = useState(false);
-  const [timeScale, setTimeScale] = useState(0.01); // Default time scale - slow but visible motion
+  const [timeScale, setTimeScale] = useState(0.0001); // Default time scale - slow but visible motion
   const [isTracking, setIsTracking] = useState(false);
   const [trackingTarget, setTrackingTarget] = useState<string | null>(null);
   const [asteroidLoadProgress, setAsteroidLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
