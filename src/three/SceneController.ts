@@ -110,9 +110,9 @@ export class SceneController {
     // Create solar flares (particle explosions from the sun)
     this.solarFlares = new SolarFlares(this.scene, new THREE.Vector3(0, 0, 0));
     
-    // Create asteroid belt manager (optimized with BatchedMesh)
+    // Create asteroid belt manager (optimized with InstancedMesh)
     this.asteroidBelt = new AsteroidBeltOptimized(this.scene);
-    this.asteroidBelt.onLoadProgress = (loaded, total) => {
+    this.asteroidBelt.onLoadProgress = (loaded: number, total: number) => {
       this.onAsteroidLoadProgress?.(loaded, total);
     };
     
@@ -161,7 +161,9 @@ export class SceneController {
       0.2 * AU,
       0x666666
     );
-    this.mainBelt.name = 'MainAsteroidBelt';
+    if (this.mainBelt) {
+      this.mainBelt.name = 'MainAsteroidBelt';
+    }
     
     // Kuiper belt (beyond Neptune) - vast doughnut-shaped region
     this.kuiperBelt = createDecorativeBelt(
@@ -173,7 +175,9 @@ export class SceneController {
       0x556688, // Icy bluish color
       true      // Torus/doughnut shape
     );
-    this.kuiperBelt.name = 'KuiperBelt';
+    if (this.kuiperBelt) {
+      this.kuiperBelt.name = 'KuiperBelt';
+    }
   }
 
   private createLabels(): void {
@@ -361,6 +365,15 @@ export class SceneController {
     
     const position = this.asteroidBelt.getAsteroidPosition(asteroid);
     
+    // Create a temporary 3D label for the asteroid
+    const asteroidName = asteroid.name || asteroid.pdes || 'Unknown Asteroid';
+    this.labelSystem.createLabel({
+      name: asteroidName,
+      position: position.clone().add(new THREE.Vector3(0, 3, 0)),
+      type: 'asteroid',
+      color: 0x00ffff,
+    });
+    
     const offset = new THREE.Vector3(0, 2, 5);
     const cameraTarget = position.clone().add(offset);
     
@@ -381,7 +394,7 @@ export class SceneController {
       if (progress < 1) {
         requestAnimationFrame(animateFly);
       } else {
-        this.onObjectSelected?.(asteroid.name || asteroid.pdes, position);
+        this.onObjectSelected?.(asteroidName, position);
       }
     };
     
@@ -390,6 +403,29 @@ export class SceneController {
 
   setTimeScale(scale: number): void {
     this.solarSystem.setTimeScale(scale);
+  }
+
+  // Toggle asteroid belt visibility
+  setAsteroidsVisible(visible: boolean): void {
+    if (this.asteroidBelt.instancedMesh) {
+      this.asteroidBelt.instancedMesh.visible = visible;
+    }
+    if (this.mainBelt) {
+      this.mainBelt.visible = visible;
+    }
+    if (this.kuiperBelt) {
+      this.kuiperBelt.visible = visible;
+    }
+  }
+
+  // Toggle post-processing (bloom, lens flare)
+  setPostProcessingEnabled(enabled: boolean): void {
+    this.usePostProcessing = enabled;
+  }
+
+  // Toggle labels visibility
+  setLabelsVisible(visible: boolean): void {
+    this.labelSystem.setVisible(visible);
   }
 
   private update(): void {

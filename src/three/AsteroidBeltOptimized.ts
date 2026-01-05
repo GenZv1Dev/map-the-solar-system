@@ -1,22 +1,11 @@
 import * as THREE from 'three';
 import { type Asteroid } from '../lib/indexedDB';
-import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
-import { extendBatchedMeshPrototype, createRadixSort } from '@three.ez/batched-mesh-extensions';
 
-// Extend prototypes for BVH acceleration
-THREE.Mesh.prototype.raycast = acceleratedRaycast;
-// @ts-expect-error - adding BVH methods
-THREE.Mesh.prototype.computeBoundsTree = computeBoundsTree;
-// @ts-expect-error - adding BVH methods
-THREE.Mesh.prototype.disposeBoundsTree = disposeBoundsTree;
-
-// Extend BatchedMesh prototype
-extendBatchedMeshPrototype();
-
-// Optimized asteroid belt using BatchedMesh with BVH and LOD
+// Simpler asteroid belt using InstancedMesh with progressive loading
+// This avoids the memory issues of BatchedMesh for large datasets
 export class AsteroidBeltOptimized {
   scene: THREE.Scene;
-  batchedMesh: THREE.BatchedMesh | null = null;
+  instancedMesh: THREE.InstancedMesh | null = null;
   asteroidData: Asteroid[] = [];
   
   // Position lookup for clicking/hovering
@@ -105,22 +94,24 @@ export class AsteroidBeltOptimized {
     return new THREE.Color(brightness, brightness * 0.9, brightness * 0.8);
   }
 
-  // Load asteroids using chunked loading for smooth UI
-  async loadAsteroids(asteroids: Asteroid[], maxCount = 1000000): Promise<void> {
+  // Load asteroids with slow progressive loading to avoid blocking
+  async loadAsteroids(asteroids: Asteroid[], maxCount = 200000): Promise<void> {
     // Abort any existing load
     this.loadingAborted = true;
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise(resolve => setTimeout(resolve, 50));
     this.loadingAborted = false;
     
+    // Limit count for performance - 200k is reasonable for InstancedMesh
     const limitedAsteroids = asteroids.slice(0, maxCount);
     this.asteroidData = limitedAsteroids;
     const total = limitedAsteroids.length;
     
     // Remove existing mesh
-    if (this.batchedMesh) {
-      this.scene.remove(this.batchedMesh);
-      this.batchedMesh.dispose();
-      this.batchedMesh = null;
+    if (this.instancedMesh) {
+      this.scene.remove(this.instancedMesh);
+      this.instancedMesh.geometry.dispose();
+      (this.instancedMesh.material as THREE.Material).dispose();
+      this.instancedMesh = null;
     }
     this.positionMap.clear();
     
@@ -128,149 +119,109 @@ export class AsteroidBeltOptimized {
       return;
     }
     
-    // Create LOD geometries (high, medium, low detail)
-    const geometryHigh = new THREE.IcosahedronGeometry(1, 2); // 80 faces
-    const geometryMed = new THREE.IcosahedronGeometry(1, 1);  // 20 faces
-    const geometryLow = new THREE.OctahedronGeometry(1, 0);   // 8 faces
-    
-    // Calculate vertex/index counts
-    const vertexCount = geometryHigh.attributes.position.count + 
-                        geometryMed.attributes.position.count + 
-                        geometryLow.attributes.position.count;
-    const indexCount = (geometryHigh.index?.count || 0) + 
-                       (geometryMed.index?.count || 0) + 
-                       (geometryLow.index?.count || 0);
+    // Create simple low-poly geometry
+    const geometry = new THREE.OctahedronGeometry(1, 0); // Very low poly - 8 faces
     
     // Create material
     const material = new THREE.MeshStandardMaterial({
       roughness: 0.7,
       metalness: 0.3,
+      vertexColors: true,
+      emissive: 0x111111,
+      emissiveIntensity: 0.2,
     });
     
-    // Create BatchedMesh with capacity for all asteroids
-    this.batchedMesh = new THREE.BatchedMesh(
-      total,
-      vertexCount * total, // Vertex capacity
-      indexCount * total,  // Index capacity
-      material
-    );
-    this.batchedMesh.name = 'AsteroidBelt';
+    // Create InstancedMesh
+    this.instancedMesh = new THREE.InstancedMesh(geometry, material, total);
+    this.instancedMesh.name = 'AsteroidBelt';
+    this.instancedMesh.frustumCulled = true;
     
-    // Enable sorting for better performance (extension method)
-    const mesh = this.batchedMesh as THREE.BatchedMesh & { customSort?: unknown };
-    if ('customSort' in mesh) {
-      mesh.customSort = createRadixSort(this.batchedMesh);
-    }
+    // Set up color attribute
+    const colors = new Float32Array(total * 3);
     
-    // Add geometries
-    const geoIdHigh = this.batchedMesh.addGeometry(geometryHigh);
-    const geoIdMed = this.batchedMesh.addGeometry(geometryMed);
-    const geoIdLow = this.batchedMesh.addGeometry(geometryLow);
+    const dummy = new THREE.Object3D();
     
-    // Choose geometry based on asteroid importance
-    const getGeometryId = (asteroid: Asteroid): number => {
-      // PHAs and NEOs get high detail
-      if (asteroid.pha || asteroid.neo) return geoIdHigh;
-      // Large asteroids get medium detail
-      if (asteroid.diameter > 10) return geoIdMed;
-      // Everything else gets low detail
-      return geoIdLow;
-    };
-    
-    const matrix = new THREE.Matrix4();
-    const color = new THREE.Color();
-    const position = new THREE.Vector3();
-    const quaternion = new THREE.Quaternion();
-    const scale = new THREE.Vector3();
-    
-    // Chunked loading - process in batches with requestAnimationFrame
-    const CHUNK_SIZE = 5000; // Process 5000 asteroids per frame
+    // Progressive loading - process in very small chunks with delays
+    const CHUNK_SIZE = 500; // Small chunks for smooth UI
+    const DELAY_MS = 1; // 1ms delay between chunks
     let processedCount = 0;
     
-    const processChunk = (): Promise<void> => {
-      return new Promise((resolve) => {
-        const chunkEnd = Math.min(processedCount + CHUNK_SIZE, total);
-        
-        for (let i = processedCount; i < chunkEnd; i++) {
-          if (this.loadingAborted) {
-            resolve();
-            return;
-          }
-          
-          const asteroid = limitedAsteroids[i];
-          
-          // Calculate position
-          const pos = this.orbitalToCartesian(
-            asteroid.a || 2.5,
-            asteroid.e || 0.1,
-            asteroid.i || 0,
-            asteroid.om || 0,
-            asteroid.w || 0,
-            asteroid.ma || Math.random() * 360
-          );
-          
-          position.copy(pos);
-          quaternion.set(
-            Math.random() - 0.5,
-            Math.random() - 0.5,
-            Math.random() - 0.5,
-            Math.random() - 0.5
-          ).normalize();
-          
-          const s = this.estimateRadius(asteroid);
-          scale.setScalar(s);
-          
-          matrix.compose(position, quaternion, scale);
-          
-          // Add instance
-          const geometryId = getGeometryId(asteroid);
-          const instanceId = this.batchedMesh!.addInstance(geometryId);
-          this.batchedMesh!.setMatrixAt(instanceId, matrix);
-          
-          // Set color
-          color.copy(this.getColor(asteroid));
-          this.batchedMesh!.setColorAt(instanceId, color);
-          
-          // Store mapping
-          this.positionMap.set(instanceId, asteroid);
+    // Report initial progress
+    this.onLoadProgress?.(0, total);
+    
+    const processChunk = async (): Promise<boolean> => {
+      const chunkEnd = Math.min(processedCount + CHUNK_SIZE, total);
+      
+      for (let i = processedCount; i < chunkEnd; i++) {
+        if (this.loadingAborted) {
+          return false;
         }
         
-        processedCount = chunkEnd;
+        const asteroid = limitedAsteroids[i];
         
-        // Report progress
-        this.onLoadProgress?.(processedCount, total);
+        // Calculate position
+        const pos = this.orbitalToCartesian(
+          asteroid.a || 2.5,
+          asteroid.e || 0.1,
+          asteroid.i || 0,
+          asteroid.om || 0,
+          asteroid.w || 0,
+          asteroid.ma || Math.random() * 360
+        );
         
-        if (processedCount < total && !this.loadingAborted) {
-          // Schedule next chunk
-          requestAnimationFrame(() => {
-            processChunk().then(resolve);
-          });
-        } else {
-          resolve();
-        }
-      });
+        dummy.position.copy(pos);
+        dummy.rotation.set(
+          Math.random() * Math.PI * 2,
+          Math.random() * Math.PI * 2,
+          Math.random() * Math.PI * 2
+        );
+        
+        const s = this.estimateRadius(asteroid);
+        dummy.scale.setScalar(s);
+        dummy.updateMatrix();
+        
+        this.instancedMesh!.setMatrixAt(i, dummy.matrix);
+        
+        // Set color
+        const color = this.getColor(asteroid);
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+        
+        // Store mapping
+        this.positionMap.set(i, asteroid);
+      }
+      
+      processedCount = chunkEnd;
+      
+      // Report progress
+      this.onLoadProgress?.(processedCount, total);
+      
+      return processedCount < total;
     };
     
-    // Start processing
-    await processChunk();
+    // Process all chunks with delays
+    while (!this.loadingAborted) {
+      const hasMore = await processChunk();
+      if (!hasMore) break;
+      
+      // Small delay to allow UI updates
+      await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+    }
     
-    if (this.loadingAborted || !this.batchedMesh) {
+    if (this.loadingAborted || !this.instancedMesh) {
       return;
     }
     
-    // Compute BVH for fast raycasting and frustum culling
-    try {
-      const meshWithBVH = this.batchedMesh as THREE.BatchedMesh & { computeBVH?: (coordSystem: number) => void };
-      if (meshWithBVH.computeBVH) {
-        meshWithBVH.computeBVH(THREE.WebGLCoordinateSystem);
-      }
-    } catch (e) {
-      console.warn('Could not compute BVH:', e);
-    }
+    // Apply colors
+    geometry.setAttribute('color', new THREE.InstancedBufferAttribute(colors, 3));
     
-    this.scene.add(this.batchedMesh);
+    // Update instance matrix
+    this.instancedMesh.instanceMatrix.needsUpdate = true;
     
-    console.log(`Loaded ${total} asteroids with BatchedMesh optimization`);
+    this.scene.add(this.instancedMesh);
+    
+    console.log(`Loaded ${total} asteroids with InstancedMesh`);
   }
 
   getAsteroidAtIndex(index: number): Asteroid | undefined {
@@ -290,10 +241,11 @@ export class AsteroidBeltOptimized {
 
   dispose(): void {
     this.loadingAborted = true;
-    if (this.batchedMesh) {
-      this.scene.remove(this.batchedMesh);
-      this.batchedMesh.dispose();
-      this.batchedMesh = null;
+    if (this.instancedMesh) {
+      this.scene.remove(this.instancedMesh);
+      this.instancedMesh.geometry.dispose();
+      (this.instancedMesh.material as THREE.Material).dispose();
+      this.instancedMesh = null;
     }
     this.positionMap.clear();
     this.asteroidData = [];

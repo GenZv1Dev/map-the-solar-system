@@ -200,6 +200,12 @@ export class Label3DSystem {
     }
   }
   
+  setVisible(visible: boolean): void {
+    this.labels.forEach(label => {
+      label.sprite.visible = visible;
+    });
+  }
+  
   dispose(): void {
     this.labels.forEach(label => {
       this.scene.remove(label.sprite);

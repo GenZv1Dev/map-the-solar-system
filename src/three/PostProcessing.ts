@@ -24,9 +24,9 @@ export class PostProcessing {
   
   // Bloom parameters
   private params: BloomParams = {
-    threshold: 0.8,
-    strength: 0.5,
-    radius: 0.3,
+    threshold: 0.9,
+    strength: 0.2,
+    radius: 0.2,
   };
 
   constructor(config: PostProcessingConfig) {

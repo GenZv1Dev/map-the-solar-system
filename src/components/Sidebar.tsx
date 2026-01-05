@@ -12,10 +12,21 @@ import {
     TrendingUp,
     Filter,
     X,
-    Clock
+    Clock,
+    Settings,
+    Eye,
+    EyeOff,
+    Zap,
+    Tag
 } from 'lucide-react';
 import { type Asteroid, searchAsteroids, getAsteroidsByPage } from '../lib/indexedDB';
 import { formatCompactValue } from '../lib/dataLoader';
+
+export interface PerformanceSettings {
+    showAsteroids: boolean;
+    showLabels: boolean;
+    enableBloom: boolean;
+}
 
 interface SidebarProps {
     navigationItems: Array<{ name: string; type: string }>;
@@ -29,6 +40,8 @@ interface SidebarProps {
     };
     timeScale: number;
     onTimeScaleChange: (scale: number) => void;
+    performanceSettings: PerformanceSettings;
+    onPerformanceSettingsChange: (settings: PerformanceSettings) => void;
 }
 
 export function Sidebar({
@@ -38,6 +51,8 @@ export function Sidebar({
     statistics,
     timeScale,
     onTimeScaleChange,
+    performanceSettings,
+    onPerformanceSettingsChange,
 }: SidebarProps) {
     const [isOpen, setIsOpen] = useState(true);
     const [activeTab, setActiveTab] = useState<'nav' | 'asteroids' | 'stats'>('nav');
@@ -200,6 +215,77 @@ export function Sidebar({
                                         <span>Real-time</span>
                                         <span>Fast</span>
                                     </div>
+                                </div>
+
+                                {/* Performance Settings */}
+                                <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Settings className="w-4 h-4 text-purple-400" />
+                                        <span className="text-xs text-gray-400">Display Settings</span>
+                                    </div>
+                                    
+                                    {/* Show Asteroids Toggle */}
+                                    <label className="flex items-center justify-between py-2 cursor-pointer hover:bg-gray-700/30 rounded px-2 -mx-2">
+                                        <div className="flex items-center gap-2">
+                                            {performanceSettings.showAsteroids ? (
+                                                <Eye className="w-4 h-4 text-green-400" />
+                                            ) : (
+                                                <EyeOff className="w-4 h-4 text-gray-500" />
+                                            )}
+                                            <span className="text-sm text-gray-300">Show Asteroids</span>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={performanceSettings.showAsteroids}
+                                            onChange={(e) => onPerformanceSettingsChange({
+                                                ...performanceSettings,
+                                                showAsteroids: e.target.checked
+                                            })}
+                                            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
+                                        />
+                                    </label>
+
+                                    {/* Show Labels Toggle */}
+                                    <label className="flex items-center justify-between py-2 cursor-pointer hover:bg-gray-700/30 rounded px-2 -mx-2">
+                                        <div className="flex items-center gap-2">
+                                            {performanceSettings.showLabels ? (
+                                                <Tag className="w-4 h-4 text-green-400" />
+                                            ) : (
+                                                <Tag className="w-4 h-4 text-gray-500" />
+                                            )}
+                                            <span className="text-sm text-gray-300">Show Labels</span>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={performanceSettings.showLabels}
+                                            onChange={(e) => onPerformanceSettingsChange({
+                                                ...performanceSettings,
+                                                showLabels: e.target.checked
+                                            })}
+                                            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
+                                        />
+                                    </label>
+
+                                    {/* Enable Bloom Toggle */}
+                                    <label className="flex items-center justify-between py-2 cursor-pointer hover:bg-gray-700/30 rounded px-2 -mx-2">
+                                        <div className="flex items-center gap-2">
+                                            {performanceSettings.enableBloom ? (
+                                                <Zap className="w-4 h-4 text-yellow-400" />
+                                            ) : (
+                                                <Zap className="w-4 h-4 text-gray-500" />
+                                            )}
+                                            <span className="text-sm text-gray-300">Bloom Effects</span>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={performanceSettings.enableBloom}
+                                            onChange={(e) => onPerformanceSettingsChange({
+                                                ...performanceSettings,
+                                                enableBloom: e.target.checked
+                                            })}
+                                            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
+                                        />
+                                    </label>
                                 </div>
 
                                 <h3 className="text-gray-400 text-xs uppercase tracking-wider">Solar System</h3>

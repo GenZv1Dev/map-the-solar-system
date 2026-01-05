@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { LoadingScreen } from './components/LoadingScreen';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, type PerformanceSettings } from './components/Sidebar';
 import { AsteroidDetail } from './components/AsteroidDetail';
 import { ControlsHelp } from './components/ControlsHelp';
 import { loadAsteroidData, type LoadProgress } from './lib/dataLoader';
@@ -34,10 +34,15 @@ function App() {
   // UI state
   const [selectedAsteroid, setSelectedAsteroid] = useState<Asteroid | null>(null);
   const [isControlsLocked, setIsControlsLocked] = useState(false);
-  const [timeScale, setTimeScale] = useState(0.001); // Default time scale - visible slow motion
+  const [timeScale, setTimeScale] = useState(0.01); // Default time scale - slow but visible motion
   const [isTracking, setIsTracking] = useState(false);
   const [trackingTarget, setTrackingTarget] = useState<string | null>(null);
   const [asteroidLoadProgress, setAsteroidLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [performanceSettings, setPerformanceSettings] = useState({
+    showAsteroids: true,
+    showLabels: true,
+    enableBloom: true,
+  });
 
   // Load asteroid data into IndexedDB
   useEffect(() => {
@@ -136,6 +141,15 @@ function App() {
     setTrackingTarget(null);
   }, []);
 
+  const handlePerformanceSettingsChange = useCallback((settings: PerformanceSettings) => {
+    setPerformanceSettings(settings);
+    if (sceneRef.current) {
+      sceneRef.current.setAsteroidsVisible(settings.showAsteroids);
+      sceneRef.current.setLabelsVisible(settings.showLabels);
+      sceneRef.current.setPostProcessingEnabled(settings.enableBloom);
+    }
+  }, []);
+
   // Render loading screen
   if (isLoading) {
     return <LoadingScreen progress={loadProgress} />;
@@ -154,6 +168,8 @@ function App() {
         statistics={statistics}
         timeScale={timeScale}
         onTimeScaleChange={handleTimeScaleChange}
+        performanceSettings={performanceSettings}
+        onPerformanceSettingsChange={handlePerformanceSettingsChange}
       />
 
       {/* Asteroid detail panel */}

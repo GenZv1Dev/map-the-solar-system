@@ -252,7 +252,7 @@ export class SolarSystem {
   loader: THREE.TextureLoader;
   
   private time = 0;
-  private timeScale = 0.00001; // Realistic simulation speed - planets move very slowly
+  private timeScale = 0.01; // Default simulation speed - slow but visible motion
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -489,7 +489,11 @@ export class SolarSystem {
       data.moons.forEach(moonData => {
         const moonOrbit = new THREE.Group();
         const moonRadius = moonData.radius * 3; // Match planet scale
-        const moonDistance = moonData.distance * AU * 3; // Increase distance for visibility
+        // Moon distance needs to be relative to planet size, not in AU
+        // The distance values in data are in AU but we need them scaled for visibility
+        // Use planet radius as base and add moon distance scaled appropriately
+        const planetRadius = data.radius * 3;
+        const moonDistance = planetRadius + (moonData.distance * 500); // Distance from planet surface
         
         const moonGeometry = new THREE.SphereGeometry(moonRadius, 32, 32);
         
