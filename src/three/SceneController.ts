@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import Stats from 'three/addons/libs/stats.module.js';
 import { SolarSystem, AU } from './SolarSystem';
-import { AsteroidBelt, createDecorativeBelt } from './AsteroidBelt';
+import { AsteroidBeltOptimized, createDecorativeBelt } from './AsteroidBeltOptimized';
 import { BlackHole } from './BlackHole';
 import { Label3DSystem } from './Label3D';
 import { FlyControls } from './FlyControls';
@@ -11,6 +12,8 @@ export interface SceneConfig {
   container: HTMLElement;
   onObjectSelected?: (name: string, position: THREE.Vector3) => void;
   onControlsLocked?: (locked: boolean) => void;
+  onTrackingChange?: (isTracking: boolean, target: string | null) => void;
+  onAsteroidLoadProgress?: (loaded: number, total: number) => void;
 }
 
 export class SceneController {
@@ -20,9 +23,10 @@ export class SceneController {
   private camera: THREE.PerspectiveCamera;
   private controls: FlyControls;
   private clock: THREE.Clock;
+  private stats: Stats;
   
   private solarSystem: SolarSystem;
-  private asteroidBelt: AsteroidBelt;
+  private asteroidBelt: AsteroidBeltOptimized;
   private blackHole: BlackHole;
   private labelSystem: Label3DSystem;
   private solarFlares: SolarFlares;
@@ -41,11 +45,15 @@ export class SceneController {
   // Callbacks
   private onObjectSelected?: (name: string, position: THREE.Vector3) => void;
   private onControlsLocked?: (locked: boolean) => void;
+  private onTrackingChange?: (isTracking: boolean, target: string | null) => void;
+  private onAsteroidLoadProgress?: (loaded: number, total: number) => void;
 
   constructor(config: SceneConfig) {
     this.container = config.container;
     this.onObjectSelected = config.onObjectSelected;
     this.onControlsLocked = config.onControlsLocked;
+    this.onTrackingChange = config.onTrackingChange;
+    this.onAsteroidLoadProgress = config.onAsteroidLoadProgress;
     
     // Initialize Three.js
     this.scene = new THREE.Scene();
@@ -72,6 +80,14 @@ export class SceneController {
     this.renderer.toneMappingExposure = 1.0;
     this.container.appendChild(this.renderer.domElement);
     
+    // FPS Stats
+    this.stats = new Stats();
+    this.stats.showPanel(0); // 0: fps, 1: ms, 2: mb
+    this.stats.dom.style.position = 'absolute';
+    this.stats.dom.style.top = '0px';
+    this.stats.dom.style.left = '0px';
+    this.container.appendChild(this.stats.dom);
+    
     // Clock
     this.clock = new THREE.Clock();
     
@@ -88,8 +104,11 @@ export class SceneController {
     // Create solar flares (particle explosions from the sun)
     this.solarFlares = new SolarFlares(this.scene, new THREE.Vector3(0, 0, 0));
     
-    // Create asteroid belt manager
-    this.asteroidBelt = new AsteroidBelt(this.scene);
+    // Create asteroid belt manager (optimized with BatchedMesh)
+    this.asteroidBelt = new AsteroidBeltOptimized(this.scene);
+    this.asteroidBelt.onLoadProgress = (loaded, total) => {
+      this.onAsteroidLoadProgress?.(loaded, total);
+    };
     
     // Create decorative belts
     this.createDecorativeBelts();
@@ -130,8 +149,9 @@ export class SceneController {
       30 * AU,
       55 * AU,  // Extended outer radius
       50000,    // More objects for icy bodies
-      5 * AU,   // Thicker belt
-      0x556688  // Icy bluish color
+      8 * AU,   // Taller for torus shape
+      0x556688, // Icy bluish color
+      true      // Torus/doughnut shape
     );
     this.kuiperBelt.name = 'KuiperBelt';
   }
@@ -158,6 +178,30 @@ export class SceneController {
       }
     });
     
+    // Moon labels for major moons
+    const moons = [
+      { planet: 'Earth', moon: 'Moon' },
+      { planet: 'Mars', moon: 'Phobos' },
+      { planet: 'Mars', moon: 'Deimos' },
+      { planet: 'Jupiter', moon: 'Io' },
+      { planet: 'Jupiter', moon: 'Europa' },
+      { planet: 'Jupiter', moon: 'Ganymede' },
+      { planet: 'Jupiter', moon: 'Callisto' },
+      { planet: 'Saturn', moon: 'Titan' },
+      { planet: 'Saturn', moon: 'Enceladus' },
+    ];
+    moons.forEach(({ planet, moon }) => {
+      const moonObj = this.solarSystem.getObject(`${planet}/${moon}`);
+      if (moonObj) {
+        this.labelSystem.createLabel({
+          name: moon,
+          position: moonObj.mesh.position.clone().add(new THREE.Vector3(0, 2, 0)),
+          type: 'moon',
+          color: 0xaaaaaa,
+        });
+      }
+    });
+    
     // Region labels
     this.labelSystem.createLabel({
       name: 'Main Asteroid Belt',
@@ -172,6 +216,17 @@ export class SceneController {
       type: 'region',
       color: 0x666688,
     });
+    
+    // Saturn's rings label
+    const saturnPos = this.solarSystem.getPosition('Saturn');
+    if (saturnPos) {
+      this.labelSystem.createLabel({
+        name: "Saturn's Rings",
+        position: saturnPos.clone().add(new THREE.Vector3(50, 5, 0)),
+        type: 'region',
+        color: 0xd4b896,
+      });
+    }
     
     this.labelSystem.createLabel({
       name: 'Black Hole',
@@ -218,8 +273,11 @@ export class SceneController {
     
     if (!targetPosition) return;
     
-    // Enable tracking mode
+    // Enable tracking mode (except for belts)
     this.trackingTarget = name;
+    if (name !== 'MainAsteroidBelt' && name !== 'KuiperBelt') {
+      this.onTrackingChange?.(true, name);
+    }
     
     // Animate camera position
     const startPosition = this.camera.position.clone();
@@ -260,10 +318,26 @@ export class SceneController {
 
   // Stop tracking and return to free flight
   stopTracking(): void {
-    this.trackingTarget = null;
+    if (this.trackingTarget !== null) {
+      this.trackingTarget = null;
+      this.onTrackingChange?.(false, null);
+    }
+  }
+  
+  // Check if currently tracking
+  isTracking(): boolean {
+    return this.trackingTarget !== null;
+  }
+  
+  // Get tracking target name
+  getTrackingTarget(): string | null {
+    return this.trackingTarget;
   }
 
   flyToAsteroid(asteroid: Asteroid): void {
+    // Release any existing tracking
+    this.stopTracking();
+    
     const position = this.asteroidBelt.getAsteroidPosition(asteroid);
     
     const offset = new THREE.Vector3(0, 2, 5);
@@ -340,13 +414,16 @@ export class SceneController {
     this.labelSystem.update();
     
     this.renderer.render(this.scene, this.camera);
+    this.stats.update();
   }
 
   private animate = (): void => {
     if (!this.isRunning) return;
     
+    this.stats.begin();
     this.animationId = requestAnimationFrame(this.animate);
     this.update();
+    this.stats.end();
   };
 
   start(): void {

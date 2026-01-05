@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { LoadingScreen } from './components/LoadingScreen';
 import { Sidebar } from './components/Sidebar';
 import { AsteroidDetail } from './components/AsteroidDetail';
-import { ControlsHelp, ClickToFly } from './components/ControlsHelp';
+import { ControlsHelp } from './components/ControlsHelp';
 import { loadAsteroidData, type LoadProgress } from './lib/dataLoader';
-import { getAsteroidsByPage, getStatistics, type Asteroid } from './lib/indexedDB';
+import { getAllAsteroids, getStatistics, type Asteroid } from './lib/indexedDB';
 import { SceneController } from './three/SceneController';
 
 function App() {
@@ -35,9 +35,12 @@ function App() {
   // UI state
   const [selectedAsteroid, setSelectedAsteroid] = useState<Asteroid | null>(null);
   const [isControlsLocked, setIsControlsLocked] = useState(false);
-  const [timeScale, setTimeScale] = useState(0.00001); // Default time scale
+  const [timeScale, setTimeScale] = useState(0.001); // Default time scale - visible slow motion
+  const [isTracking, setIsTracking] = useState(false);
+  const [trackingTarget, setTrackingTarget] = useState<string | null>(null);
+  const [asteroidLoadProgress, setAsteroidLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
 
-  // Load asteroid data
+  // Load asteroid data into IndexedDB
   useEffect(() => {
     // Prevent double fetch in StrictMode
     if (isLoadingStarted.current) return;
@@ -47,18 +50,12 @@ function App() {
       try {
         await loadAsteroidData(setLoadProgress);
         
-        // Load initial asteroids for display
-        const initialAsteroids = await getAsteroidsByPage(0, 1000);
-        setAsteroids(initialAsteroids);
-        
-        // Get statistics
+        // Get statistics (don't load all asteroids yet - scene will do it progressively)
         const stats = await getStatistics();
         setStatistics(stats);
         
-        // Short delay before showing scene
-        setTimeout(() => {
-          setIsLoading(false);
-        }, 500);
+        // Show scene immediately - asteroids will load progressively
+        setIsLoading(false);
       } catch (error) {
         console.error('Failed to load asteroid data:', error);
         setLoadProgress({
@@ -84,21 +81,33 @@ function App() {
         console.log('Selected:', name);
       },
       onControlsLocked: setIsControlsLocked,
+      onTrackingChange: (tracking, target) => {
+        setIsTracking(tracking);
+        setTrackingTarget(target);
+      },
+      onAsteroidLoadProgress: (loaded, total) => {
+        setAsteroidLoadProgress({ loaded, total });
+        if (loaded >= total) {
+          // Clear progress after a delay
+          setTimeout(() => setAsteroidLoadProgress(null), 2000);
+        }
+      },
     });
     
     sceneRef.current = controller;
     setNavigationItems(controller.getNavigationItems());
     
-    // Load asteroids into scene
-    if (asteroids.length > 0) {
-      controller.loadAsteroids(asteroids);
-    }
+    // Load asteroids progressively (after scene is visible)
+    getAllAsteroids().then(allAsteroids => {
+      setAsteroids(allAsteroids);
+      controller.loadAsteroids(allAsteroids);
+    });
     
     return () => {
       controller.dispose();
       sceneRef.current = null;
     };
-  }, [isLoading, asteroids]);
+  }, [isLoading]);
 
   // Handlers
   const handleNavigate = useCallback((name: string) => {
@@ -121,6 +130,12 @@ function App() {
   const handleTimeScaleChange = useCallback((scale: number) => {
     setTimeScale(scale);
     sceneRef.current?.setTimeScale(scale);
+  }, []);
+
+  const handleExitFocus = useCallback(() => {
+    sceneRef.current?.stopTracking();
+    setIsTracking(false);
+    setTrackingTarget(null);
   }, []);
 
   // Render loading screen
@@ -154,7 +169,24 @@ function App() {
 
       {/* Controls help */}
       <ControlsHelp isLocked={isControlsLocked} />
-      <ClickToFly visible={!isControlsLocked} />
+      {/* Click indicator removed - was ClickToFly */}
+
+      {/* Exit Focus Mode button */}
+      {isTracking && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
+          <button
+            onClick={handleExitFocus}
+            className="px-4 py-2 bg-red-600/80 hover:bg-red-500 text-white rounded-lg 
+                       backdrop-blur-sm border border-red-500/50 transition-all
+                       flex items-center gap-2 shadow-lg"
+          >
+            <span className="text-sm font-medium">Exit Focus Mode</span>
+            {trackingTarget && (
+              <span className="text-xs opacity-75">({trackingTarget})</span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Title */}
       <div className="fixed top-4 right-4 z-40 text-right">
@@ -165,6 +197,22 @@ function App() {
           {statistics.totalCount.toLocaleString()} asteroids mapped
         </p>
       </div>
+
+      {/* Asteroid loading progress */}
+      {asteroidLoadProgress && (
+        <div className="fixed bottom-4 right-4 z-50 bg-black/80 backdrop-blur-sm rounded-lg p-3 border border-gray-700">
+          <div className="text-xs text-gray-400 mb-1">Loading asteroids into scene...</div>
+          <div className="w-48 h-2 bg-gray-700 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-linear-to-r from-cyan-500 to-purple-500 transition-all duration-100"
+              style={{ width: `${(asteroidLoadProgress.loaded / asteroidLoadProgress.total) * 100}%` }}
+            />
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            {asteroidLoadProgress.loaded.toLocaleString()} / {asteroidLoadProgress.total.toLocaleString()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -253,29 +253,14 @@ export async function streamAsteroidsFromCache(
   
   if (total === 0) return [];
   
-  const tx = db.transaction(STORE_NAME, 'readonly');
-  const store = tx.store;
+  // Use getAll for efficiency - IndexedDB transactions can't survive async delays
+  // Progress updates are done in chunks after fetching
+  onProgress(0, total);
   
-  let cursor = await store.openCursor();
-  const results: Asteroid[] = [];
-  let loaded = 0;
-  let lastProgressUpdate = 0;
+  const allAsteroids = await db.getAll(STORE_NAME);
   
-  while (cursor) {
-    results.push(cursor.value as Asteroid);
-    loaded++;
-    
-    // Update progress every 1% or 5000 items, whichever is less frequent
-    const progressInterval = Math.max(Math.floor(total / 100), 5000);
-    if (loaded - lastProgressUpdate >= progressInterval || loaded === total) {
-      onProgress(loaded, total);
-      lastProgressUpdate = loaded;
-      // Yield to main thread periodically
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-    
-    cursor = await cursor.continue();
-  }
+  // Report final progress
+  onProgress(allAsteroids.length, total);
   
-  return results;
+  return allAsteroids;
 }

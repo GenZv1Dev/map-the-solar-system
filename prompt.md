@@ -93,7 +93,7 @@ Solar Wind: This is a constant flow of charged particles streaming from the coro
 we got some errors, and look I cleaned up index.js please make sure the earth and moon are like this they work perfectly here
 
 for some reason there's only 1000 astreoids in the ui search instead of the 900k+
-the sun light is too bright*
+the sun light is too bright
 mercury is glitching through the sun and doesn't have an orbit
 the kuplier belt is missing the a vast, doughnut-shaped region of icy bodies and dwarf planets
 pluto is missing
@@ -101,3 +101,33 @@ add smoke and gas giants and saturn rings and all the moons
 mars moons are spinning too fast
 mars is missing the textures we said to use the moon see prompt.md for the full original plan
 make it by default spin not paused, but not in real time, very slow, and when you focus a planet set the focus mode and make it track it and the camera face the planet you chosen, also I can't see the black hole from a distance
+
+the sun light is still too bright*
+
+the kupier belty is still missing the doughnut-shaped region of icy bodies
+
+some planets are supposed to have rings around them and moons but I can't see those rings and moons and 3d labels for them that are relatively smaller
+
+mars is using the moon texture but its not red it needs to be red
+
+also when you refresh after it stored all the astreoids you get an error:
+App.tsx:63 Failed to load asteroid data: TransactionInactiveError: Failed to execute 'continue' on 'IDBCursor': The transaction has finished.
+    at streamAsteroidsFromCache (indexedDB.ts:277:35)
+    at async loadAsteroidData (dataLoader.ts:198:7)
+    at async loadData (App.tsx:48:9)
+
+make sure all 950k astreoids actually render and only outline ones from the dataset the ones in the belt should be different or something
+
+the sun has a weird shadow when you circle around it with the camera, the shadows shouldn't be relative to the camera position like that..
+
+you forgot to make the time speed a little bit moving like 0.0084x or something more realistic but anything above that is clearly too fast
+
+there is no way to exit focus mode add a button to exit focus mode when its active I'm locked on a focused planet
+
+remove the click indicator ui that says left or right click..
+
+when I fly into an astreoid it gets back to the focused planet it needs t release the lock when you switch
+
+it gets stuck on loaded 0 / 958,524 and then it gets stuck at Loaded 958,524 asteroids so clearly something isn't working good, after a long time it does load, but like you'd expect there to be a proper loading, even if you have to request frame for every asteroids instead of loading so many... load them slowly.. chill with it..
+
+also the fps is very low we need to bring over optimization techniques from the batch lod bvh example, there we could load 500k objects without any fps drops because of camera culling and you can even test it with the controls and LOD for each object.. also add an fps meter and the controls from the webgl_batch_lod_bvh example

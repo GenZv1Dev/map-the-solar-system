@@ -303,10 +303,10 @@ export class SolarSystem {
       sunGroup.add(corona);
     });
     
-    // Outer glow (fresnel effect)
+    // Outer glow (fresnel effect) - use warm facing color to avoid dark center
     const glowMaterial = createFresnelMaterial({
       rimHex: 0xffaa22,
-      facingHex: 0x110000,
+      facingHex: 0xff6600,  // Warm orange instead of near-black
       fresnelPower: 1.5,
     });
     const glowMesh = new THREE.Mesh(sunGeometry, glowMaterial);
@@ -316,7 +316,7 @@ export class SolarSystem {
     // Additional soft outer glow
     const softGlowMaterial = createFresnelMaterial({
       rimHex: 0xff6600,
-      facingHex: 0x000000,
+      facingHex: 0x331100,  // Dim orange instead of pure black
       fresnelPower: 2.5,
     });
     const softGlowMesh = new THREE.Mesh(sunGeometry, softGlowMaterial);
@@ -324,16 +324,16 @@ export class SolarSystem {
     sunGroup.add(softGlowMesh);
     
     // Directional light from sun (like old project - no shadows, better lighting)
-    const sunDirectionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
+    const sunDirectionalLight = new THREE.DirectionalLight(0xffffff, 1.2);  // Reduced from 2.5
     sunDirectionalLight.position.set(0, 0, 0);
     this.scene.add(sunDirectionalLight);
     
     // Point light for local illumination near sun
-    this.sunLight = new THREE.PointLight(0xffffee, 80, 50000, 0.4);
+    this.sunLight = new THREE.PointLight(0xffffee, 40, 50000, 0.5);  // Reduced from 80
     sunGroup.add(this.sunLight);
     
     // Ambient light for overall scene visibility
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.2);  // Reduced from 0.3
     this.scene.add(ambientLight);
     
     this.scene.add(sunGroup);
@@ -382,6 +382,12 @@ export class SolarSystem {
         map: texture,
         bumpScale: 0.04,
       };
+      
+      // Apply color tint for planets using fallback textures (like Mars using moon texture)
+      // Mars specifically needs red tinting since it uses moon texture
+      if (data.name === 'Mars' && data.color) {
+        materialOptions.color = new THREE.Color(data.color);
+      }
       
       if (data.bumpUrl) {
         materialOptions.bumpMap = this.loader.load(data.bumpUrl);
@@ -459,11 +465,11 @@ export class SolarSystem {
       planetGroup.add(atmosMesh);
     }
     
-    // Rings
+    // Rings - scale to match planet (radius is in same units as planet radius)
     if (data.hasRings && data.ringInnerRadius && data.ringOuterRadius) {
       const ringGeometry = new THREE.RingGeometry(
-        data.ringInnerRadius * 0.1,
-        data.ringOuterRadius * 0.1,
+        data.ringInnerRadius * 3,  // Match planet scale factor
+        data.ringOuterRadius * 3,  // Match planet scale factor
         128
       );
       

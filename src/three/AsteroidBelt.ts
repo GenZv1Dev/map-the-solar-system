@@ -103,8 +103,8 @@ export class AsteroidBelt {
   }
 
   // Load asteroids and create instanced mesh
-  async loadAsteroids(asteroids: Asteroid[], maxCount = 100000): Promise<void> {
-    // Limit for performance
+  async loadAsteroids(asteroids: Asteroid[], maxCount = 1000000): Promise<void> {
+    // Limit for extreme performance (1 million is already pushing it)
     const limitedAsteroids = asteroids.slice(0, maxCount);
     this.asteroidData = limitedAsteroids;
     
@@ -213,13 +213,15 @@ export class AsteroidBelt {
 }
 
 // Create decorative asteroid belt for visualization
+// When torusShape is true, creates a doughnut cross-section (circular distribution)
 export function createDecorativeBelt(
   scene: THREE.Scene,
   innerRadius: number,
   outerRadius: number,
   count: number,
   height: number,
-  color: number = 0x888888
+  color: number = 0x888888,
+  torusShape: boolean = false
 ): THREE.InstancedMesh {
   const geometry = new THREE.IcosahedronGeometry(1, 1);
   const material = new THREE.MeshStandardMaterial({
@@ -233,10 +235,27 @@ export function createDecorativeBelt(
   const mesh = new THREE.InstancedMesh(geometry, material, count);
   const dummy = new THREE.Object3D();
   
+  const midRadius = (innerRadius + outerRadius) / 2;
+  const tubeRadius = (outerRadius - innerRadius) / 2;
+  
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const radius = innerRadius + Math.random() * (outerRadius - innerRadius);
-    const y = (Math.random() - 0.5) * height;
+    
+    let radius: number;
+    let y: number;
+    
+    if (torusShape) {
+      // Create torus/doughnut distribution - circular cross-section
+      const crossSectionAngle = Math.random() * Math.PI * 2;
+      const crossSectionRadius = Math.random() * tubeRadius;
+      
+      radius = midRadius + Math.cos(crossSectionAngle) * crossSectionRadius;
+      y = Math.sin(crossSectionAngle) * crossSectionRadius * (height / tubeRadius);
+    } else {
+      // Flat disk distribution
+      radius = innerRadius + Math.random() * (outerRadius - innerRadius);
+      y = (Math.random() - 0.5) * height;
+    }
     
     dummy.position.set(
       Math.cos(angle) * radius,
