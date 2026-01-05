@@ -405,6 +405,16 @@ export class SceneController {
     this.solarSystem.setTimeScale(scale);
   }
 
+  // Get current camera movement speed for HUD
+  getCurrentSpeed(): number {
+    return this.controls.getCurrentSpeed();
+  }
+
+  // Get simulated time elapsed in seconds
+  getSimulatedTime(): number {
+    return this.solarSystem.getSimulatedTime();
+  }
+
   // Toggle asteroid belt visibility
   setAsteroidsVisible(visible: boolean): void {
     if (this.asteroidBelt.instancedMesh) {

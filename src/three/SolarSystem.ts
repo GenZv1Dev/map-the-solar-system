@@ -6,6 +6,7 @@ import {
   createSunPhotosphereMaterial,
   createChromosphereMaterial,
   createEnhancedCoronaMaterial,
+  createLavaMaterial,
 } from './shaders';
 
 // Astronomical Unit in our scene scale (1 AU = 100 units)
@@ -271,11 +272,34 @@ export class SolarSystem {
     const sunRadius = 10; // Scaled for visibility
     const sunGeometry = new THREE.SphereGeometry(sunRadius, 128, 128);
     
-    // Photosphere - main visible surface with granulation and limb darkening
+    // Load lava textures with logging
+    const cloudTexture = this.loader.load(
+      '/textures/lava/cloud.png',
+      (tex) => console.log('Cloud texture loaded:', tex.image?.width),
+      undefined,
+      (err) => console.error('Failed to load cloud texture:', err)
+    );
+    const lavaTexture = this.loader.load(
+      '/textures/lava/lavatile.jpg',
+      (tex) => console.log('Lava texture loaded:', tex.image?.width),
+      undefined,
+      (err) => console.error('Failed to load lava texture:', err)
+    );
+    
+    // Lava layer - animated magma surface
+    const lavaMaterial = createLavaMaterial(cloudTexture, lavaTexture);
+    this.coronaMaterials.push(lavaMaterial);
+    this.sun = new THREE.Mesh(sunGeometry, lavaMaterial);
+    sunGroup.add(this.sun);
+    
+    // Photosphere overlay - granulation and limb darkening (semi-transparent on top of lava)
     const photosphereMaterial = createSunPhotosphereMaterial();
     this.coronaMaterials.push(photosphereMaterial);
-    this.sun = new THREE.Mesh(sunGeometry, photosphereMaterial);
-    sunGroup.add(this.sun);
+    const photosphere = new THREE.Mesh(sunGeometry, photosphereMaterial);
+    photosphere.material.transparent = true;
+    photosphere.material.opacity = 0.3; // Blend with lava underneath
+    photosphere.scale.setScalar(1.001);
+    sunGroup.add(photosphere);
     
     // Chromosphere - thin reddish layer (visible at edges)
     const chromosphereMaterial = createChromosphereMaterial();
@@ -665,6 +689,14 @@ export class SolarSystem {
 
   setTimeScale(scale: number): void {
     this.timeScale = scale;
+  }
+
+  getTimeScale(): number {
+    return this.timeScale;
+  }
+
+  getSimulatedTime(): number {
+    return this.time;
   }
 
   getPosition(name: string): THREE.Vector3 | null {

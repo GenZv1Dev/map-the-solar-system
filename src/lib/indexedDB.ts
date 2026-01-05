@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'SolarSystemDB';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Bumped to force re-cache with proper upgrade
 const STORE_NAME = 'asteroids';
 const META_STORE = 'metadata';
 
@@ -49,7 +49,19 @@ async function getDB() {
   if (dbInstance) return dbInstance;
   
   dbInstance = await openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion, newVersion) {
+      console.log(`Upgrading DB from version ${oldVersion} to ${newVersion}`);
+      
+      // Delete old stores if upgrading from older version
+      if (oldVersion > 0 && oldVersion < DB_VERSION) {
+        if (db.objectStoreNames.contains(STORE_NAME)) {
+          db.deleteObjectStore(STORE_NAME);
+        }
+        if (db.objectStoreNames.contains(META_STORE)) {
+          db.deleteObjectStore(META_STORE);
+        }
+      }
+      
       // Asteroids store with indexes
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });

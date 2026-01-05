@@ -17,7 +17,8 @@ import {
     Eye,
     EyeOff,
     Zap,
-    Tag
+    Tag,
+    ArrowUpDown
 } from 'lucide-react';
 import { type Asteroid, searchAsteroids, getAsteroidsByPage } from '../lib/indexedDB';
 import { formatCompactValue } from '../lib/dataLoader';
@@ -26,6 +27,35 @@ export interface PerformanceSettings {
     showAsteroids: boolean;
     showLabels: boolean;
     enableBloom: boolean;
+}
+
+// Format full currency value with proper separators
+function formatFullValue(value: number): string {
+    return `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+}
+
+// Calculate approximate distance to Earth (simplified orbital distance)
+// Returns distance in AU based on semi-major axis and eccentricity
+function getApproxDistanceToEarth(asteroid: Asteroid): number {
+    // Simplified: distance = |a - 1| (Earth is at 1 AU)
+    // Better approximation using perihelion (q) and aphelion (ad)
+    const earthA = 1; // AU
+    const minDist = Math.min(Math.abs(asteroid.q - earthA), Math.abs(asteroid.ad - earthA));
+    return minDist;
+}
+
+// Format distance in AU or millions of km
+function formatDistance(auDistance: number): string {
+    const KM_PER_AU = 149_597_870.7;
+    const km = auDistance * KM_PER_AU;
+    
+    if (auDistance < 0.01) {
+        return `${(km / 1000).toFixed(0).toLocaleString()} km`;
+    } else if (auDistance < 0.1) {
+        return `${(km / 1e6).toFixed(2)} M km`;
+    } else {
+        return `${auDistance.toFixed(2)} AU`;
+    }
 }
 
 interface SidebarProps {
@@ -59,6 +89,8 @@ export function Sidebar({
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(0);
     const [filterCategory, setFilterCategory] = useState<string>('all');
+    const [sortBy, setSortBy] = useState<'value' | 'diameter' | 'name' | 'distance'>('value');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
     const [displayAsteroids, setDisplayAsteroids] = useState<Asteroid[]>([]);
     const [totalResults, setTotalResults] = useState(0);
     const [isSearching, setIsSearching] = useState(false);
@@ -66,6 +98,28 @@ export function Sidebar({
 
     const searchInputRef = useRef<HTMLInputElement>(null);
     const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Sort asteroids helper
+    const sortAsteroids = useCallback((asteroids: Asteroid[]) => {
+        return [...asteroids].sort((a, b) => {
+            let comparison = 0;
+            switch (sortBy) {
+                case 'value':
+                    comparison = a.estimatedValue - b.estimatedValue;
+                    break;
+                case 'diameter':
+                    comparison = a.diameter - b.diameter;
+                    break;
+                case 'name':
+                    comparison = (a.name || a.pdes).localeCompare(b.name || b.pdes);
+                    break;
+                case 'distance':
+                    comparison = getApproxDistanceToEarth(a) - getApproxDistanceToEarth(b);
+                    break;
+            }
+            return sortOrder === 'desc' ? -comparison : comparison;
+        });
+    }, [sortBy, sortOrder]);
 
     // Search asteroids from IndexedDB
     useEffect(() => {
@@ -81,7 +135,7 @@ export function Sidebar({
                         (filterCategory === 'pha' && a.pha) ||
                         a.category === filterCategory
                     );
-                    setDisplayAsteroids(filtered);
+                    setDisplayAsteroids(sortAsteroids(filtered));
                     setTotalResults(total);
                 } else {
                     // Load by page when no search query
@@ -91,7 +145,7 @@ export function Sidebar({
                         (filterCategory === 'pha' && a.pha) ||
                         a.category === filterCategory
                     );
-                    setDisplayAsteroids(filtered);
+                    setDisplayAsteroids(sortAsteroids(filtered));
                     setTotalResults(statistics.totalCount);
                 }
             } catch (error) {
@@ -111,7 +165,7 @@ export function Sidebar({
                 clearTimeout(searchTimeoutRef.current);
             }
         };
-    }, [searchQuery, currentPage, filterCategory, statistics.totalCount]);
+    }, [searchQuery, currentPage, filterCategory, statistics.totalCount, sortAsteroids]);
 
     const totalPages = Math.ceil(totalResults / pageSize);
 
@@ -192,28 +246,42 @@ export function Sidebar({
                         {/* Navigation Tab */}
                         {activeTab === 'nav' && (
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                {/* Time Scale Slider */}
+                                {/* Time Scale Control */}
                                 <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Clock className="w-4 h-4 text-cyan-400" />
                                         <span className="text-xs text-gray-400">Time Speed</span>
                                         <span className="ml-auto text-xs text-cyan-400 font-mono">
-                                            {timeScale === 0 ? 'Paused' : `${timeScale.toFixed(4)}x`}
+                                            {timeScale === 0 ? 'Paused' : 
+                                             timeScale === 1 ? 'Real-time' :
+                                             timeScale === 3600 ? '1hr/sec' :
+                                             timeScale === 86400 ? '1day/sec' :
+                                             timeScale === 604800 ? '1week/sec' :
+                                             timeScale === 2592000 ? '1month/sec' :
+                                             `${timeScale.toLocaleString()}x`}
                                         </span>
                                     </div>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="1"
-                                        step="0.0001"
-                                        value={timeScale}
-                                        onChange={(e) => onTimeScaleChange(parseFloat(e.target.value))}
-                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-                                    />
-                                    <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                        <span>Paused</span>
-                                        <span>Real-time</span>
-                                        <span>Fast</span>
+                                    <div className="flex gap-1 flex-wrap">
+                                        {[
+                                            { label: '⏸', value: 0 },
+                                            { label: '1x', value: 1 },
+                                            { label: '1h/s', value: 3600 },
+                                            { label: '1d/s', value: 86400 },
+                                            { label: '1w/s', value: 604800 },
+                                            { label: '1m/s', value: 2592000 },
+                                        ].map(({ label, value }) => (
+                                            <button
+                                                key={value}
+                                                onClick={() => onTimeScaleChange(value)}
+                                                className={`px-2 py-1 text-xs rounded transition-colors ${
+                                                    timeScale === value 
+                                                        ? 'bg-cyan-600 text-white' 
+                                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                }`}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
 
@@ -344,9 +412,46 @@ export function Sidebar({
                                         ))}
                                     </div>
 
-                                    <p className="text-xs text-gray-500">
-                                        {isSearching ? 'Searching...' : `Showing ${displayAsteroids.length} of ${totalResults.toLocaleString()} asteroids`}
-                                    </p>
+                                    {/* Sort */}
+                                    <div className="flex items-center gap-2">
+                                        <ArrowUpDown className="w-4 h-4 text-gray-400 shrink-0" />
+                                        <select
+                                            value={sortBy}
+                                            onChange={(e) => {
+                                                setSortBy(e.target.value as typeof sortBy);
+                                                setCurrentPage(0);
+                                            }}
+                                            className="flex-1 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-gray-200 focus:outline-none focus:border-cyan-500"
+                                        >
+                                            <option value="value">Value</option>
+                                            <option value="diameter">Diameter</option>
+                                            <option value="distance">Distance to Earth</option>
+                                            <option value="name">Name</option>
+                                        </select>
+                                        <button
+                                            onClick={() => {
+                                                setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                                                setCurrentPage(0);
+                                            }}
+                                            className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
+                                        >
+                                            {sortOrder === 'desc' ? '↓' : '↑'}
+                                        </button>
+                                    </div>
+
+                                    {/* Search progress / status */}
+                                    {isSearching ? (
+                                        <div className="space-y-1">
+                                            <p className="text-xs text-gray-500">Searching...</p>
+                                            <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
+                                                <div className="h-full bg-cyan-500 animate-pulse" style={{ width: '60%' }} />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-gray-500">
+                                            Showing {displayAsteroids.length} of {totalResults.toLocaleString()} asteroids
+                                        </p>
+                                    )}
                                 </div>
 
                                 {/* Asteroid List */}
@@ -367,7 +472,7 @@ export function Sidebar({
                                                     </p>
                                                 </div>
                                                 <div className="text-right shrink-0">
-                                                    <p className="text-sm font-bold text-green-400">
+                                                    <p className="text-sm font-bold text-green-400" title={formatFullValue(asteroid.estimatedValue)}>
                                                         {formatCompactValue(asteroid.estimatedValue)}
                                                     </p>
                                                     <p className={`text-xs ${getDifficultyColor(asteroid.miningDifficulty)}`}>
@@ -375,7 +480,7 @@ export function Sidebar({
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2 mt-1">
+                                            <div className="flex items-center gap-2 mt-1 flex-wrap">
                                                 {asteroid.neo && (
                                                     <span className="px-1.5 py-0.5 text-xs bg-blue-600/30 text-blue-400 rounded">
                                                         NEO
@@ -387,10 +492,13 @@ export function Sidebar({
                                                     </span>
                                                 )}
                                                 {asteroid.diameter > 0 && (
-                                                    <span className="text-xs text-gray-500">
-                                                        Ø {asteroid.diameter.toFixed(1)} km
+                                                    <span className="text-xs text-gray-500" title="Diameter">
+                                                        ⌀ {asteroid.diameter.toFixed(1)} km
                                                     </span>
                                                 )}
+                                                <span className="text-xs text-cyan-500/70" title="Min. distance to Earth orbit">
+                                                    ↔ {formatDistance(getApproxDistanceToEarth(asteroid))}
+                                                </span>
                                             </div>
                                         </button>
                                     ))}

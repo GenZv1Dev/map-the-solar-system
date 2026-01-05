@@ -111,26 +111,27 @@ function estimateValueFromDiameter(diameter: number, albedo: number, className: 
   // Mass in kg (volume in km³ to m³, density g/cm³ to kg/m³)
   const massKg = volume * 1e9 * density * 1000;
   
-  // Value per kg based on composition
-  let valuePerKg = 0.001; // Default: rocky material
+  // Value per kg based on composition (more realistic lower values)
+  let valuePerKg = 0.0001; // Default: rocky material, low value
   
   if (className.startsWith('M') || albedo > 0.25) {
     // Metallic asteroids: iron, nickel, platinum group metals
-    valuePerKg = 500; // $/kg for precious metals content
+    valuePerKg = 0.5; // $/kg for precious metals content (much more conservative)
   } else if (className.startsWith('C') || albedo < 0.1) {
     // Carbonaceous: water, organics (valuable for space resources)
-    valuePerKg = 50; // $/kg for volatiles
+    valuePerKg = 0.05; // $/kg for volatiles
   } else {
     // S-type: silicates, some metals
-    valuePerKg = 10;
+    valuePerKg = 0.01;
   }
   
   // Calculate base value
   let value = massKg * valuePerKg;
   
-  // Cap at reasonable maximum and apply accessibility factor
-  value = Math.min(value, 1e18); // Cap at 1 quintillion
+  // Reduce to more realistic numbers (most asteroids worth millions to billions, not quadrillions)
+  value = value * 0.00001;
   
+  // Don't cap - let the numbers show natural variation
   return Math.round(value);
 }
 
@@ -406,10 +407,11 @@ export function formatValue(value: number): string {
 }
 
 export function formatCompactValue(value: number): string {
-  if (value >= 1e15) return `$${(value / 1e15).toFixed(1)}Q`;
-  if (value >= 1e12) return `$${(value / 1e12).toFixed(1)}T`;
-  if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
-  if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
-  if (value >= 1e3) return `$${(value / 1e3).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
+  // More varied/realistic display with 2 decimal places
+  if (value >= 1e15) return `$${(value / 1e15).toFixed(2)} Quadrillion`;
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)} Trillion`;
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)} Billion`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(2)} Million`;
+  if (value >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
+  return `$${value.toLocaleString()}`;
 }

@@ -3,6 +3,7 @@ import { LoadingScreen } from './components/LoadingScreen';
 import { Sidebar, type PerformanceSettings } from './components/Sidebar';
 import { AsteroidDetail } from './components/AsteroidDetail';
 import { ControlsHelp } from './components/ControlsHelp';
+import { HUD } from './components/HUD';
 import { loadAsteroidData, type LoadProgress } from './lib/dataLoader';
 import { getAllAsteroids, getStatistics, type Asteroid } from './lib/indexedDB';
 import { SceneController } from './three/SceneController';
@@ -34,7 +35,7 @@ function App() {
   // UI state
   const [selectedAsteroid, setSelectedAsteroid] = useState<Asteroid | null>(null);
   const [isControlsLocked, setIsControlsLocked] = useState(false);
-  const [timeScale, setTimeScale] = useState(0.0001); // Default time scale - slow but visible motion
+  const [timeScale, setTimeScale] = useState(86400); // Default: 1 real second = 1 simulated day (86400 seconds)
   const [isTracking, setIsTracking] = useState(false);
   const [trackingTarget, setTrackingTarget] = useState<string | null>(null);
   const [asteroidLoadProgress, setAsteroidLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
@@ -150,6 +151,15 @@ function App() {
     }
   }, []);
 
+  // Callbacks for HUD - must return current values from scene
+  const getCurrentSpeed = useCallback(() => {
+    return sceneRef.current?.getCurrentSpeed() ?? 0;
+  }, []);
+
+  const getSimulatedTime = useCallback(() => {
+    return sceneRef.current?.getSimulatedTime() ?? 0;
+  }, []);
+
   // Render loading screen
   if (isLoading) {
     return <LoadingScreen progress={loadProgress} />;
@@ -184,6 +194,13 @@ function App() {
       {/* Controls help */}
       <ControlsHelp isLocked={isControlsLocked} />
       {/* Click indicator removed - was ClickToFly */}
+
+      {/* HUD - Speed, time, date */}
+      <HUD 
+        getCurrentSpeed={getCurrentSpeed}
+        getSimulatedTime={getSimulatedTime}
+        timeScale={timeScale}
+      />
 
       {/* Exit Focus Mode button */}
       {isTracking && (

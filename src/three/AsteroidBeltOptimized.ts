@@ -225,7 +225,7 @@ export class AsteroidBeltOptimized {
   }
 
   // Load asteroids with progressive loading
-  async loadAsteroids(asteroids: Asteroid[], maxCount = 200000): Promise<void> {
+  async loadAsteroids(asteroids: Asteroid[], maxCount = 2000000): Promise<void> {
     this.loadingAborted = true;
     await new Promise(resolve => setTimeout(resolve, 50));
     this.loadingAborted = false;
@@ -362,40 +362,42 @@ export class AsteroidBeltOptimized {
     console.log(`Loaded ${total} asteroids with rocky geometry and ${this.lodMeshes.length} LOD levels`);
   }
 
+  // Frame throttling for LOD updates
+  private lastLODUpdate = 0;
+  private lodUpdateInterval = 100; // ms between LOD checks (10fps for LOD)
+
   // Update LOD and nearby labels based on camera
   updateLOD(camera: THREE.Camera): void {
     if (this.lodMeshes.length === 0) return;
     
+    // Throttle updates to reduce performance impact
+    const now = performance.now();
+    if (now - this.lastLODUpdate < this.lodUpdateInterval) return;
+    this.lastLODUpdate = now;
+    
     const cameraPos = camera.position;
     
-    // Find distance to nearest asteroid for LOD
-    let minDist = Infinity;
-    const nearbyThreshold = 15; // Distance to show labels
+    // Calculate distance to asteroid belt center (much faster than checking all asteroids)
+    const beltCenter = 2.7 * this.AU; // Main belt center
+    const distToCenter = Math.sqrt(cameraPos.x * cameraPos.x + cameraPos.z * cameraPos.z);
+    const minDist = Math.abs(distToCenter - beltCenter);
+    
+    // Threshold for showing labels (increased for better visibility)
+    const nearbyThreshold = 50;
     const nearbyAsteroids: { index: number; distance: number }[] = [];
     
-    // Sample positions for performance (check every Nth asteroid)
-    const sampleRate = Math.max(1, Math.floor(this.instancePositions.length / 10000));
-    
-    for (let i = 0; i < this.instancePositions.length; i += sampleRate) {
-      const pos = this.instancePositions[i];
-      if (!pos) continue;
+    // Only do asteroid iteration if we're close to the belt
+    if (minDist < 200) {
+      // Check more asteroids when we're very close
+      const maxChecks = minDist < 50 ? 10000 : 3000;
+      const step = Math.max(1, Math.floor(this.instancePositions.length / maxChecks));
       
-      const dist = cameraPos.distanceTo(pos);
-      if (dist < minDist) minDist = dist;
-      
-      if (dist < nearbyThreshold) {
-        nearbyAsteroids.push({ index: i, distance: dist });
-      }
-    }
-    
-    // Also check non-sampled asteroids if we're very close
-    if (minDist < 50) {
-      for (let i = 0; i < this.instancePositions.length; i++) {
-        if (i % sampleRate === 0) continue; // Already checked
+      for (let i = 0; i < this.instancePositions.length; i += step) {
         const pos = this.instancePositions[i];
         if (!pos) continue;
         
         const dist = cameraPos.distanceTo(pos);
+        
         if (dist < nearbyThreshold) {
           nearbyAsteroids.push({ index: i, distance: dist });
         }

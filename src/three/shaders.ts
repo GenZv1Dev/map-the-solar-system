@@ -683,3 +683,86 @@ export function createStarfieldMaterial(): THREE.ShaderMaterial {
   });
 }
 
+// Lava shader for Sun surface - based on Three.js lava example
+export function createLavaMaterial(
+  cloudTexture: THREE.Texture,
+  lavaTexture: THREE.Texture
+): THREE.ShaderMaterial {
+  // Set texture wrapping
+  cloudTexture.wrapS = cloudTexture.wrapT = THREE.RepeatWrapping;
+  lavaTexture.wrapS = lavaTexture.wrapT = THREE.RepeatWrapping;
+  lavaTexture.colorSpace = THREE.SRGBColorSpace;
+
+  const uniforms = {
+    time: { value: 0 },
+    uvScale: { value: new THREE.Vector2(4.0, 2.0) },
+    texture1: { value: cloudTexture },
+    texture2: { value: lavaTexture },
+  };
+
+  const vertexShader = `
+    uniform vec2 uvScale;
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    
+    void main() {
+      vUv = uvScale * uv;
+      vNormal = normalize(normalMatrix * normal);
+      vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
+  const fragmentShader = `
+    uniform float time;
+    uniform sampler2D texture1;
+    uniform sampler2D texture2;
+    
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    
+    void main() {
+      // Limb darkening for spherical look
+      vec3 viewDir = normalize(cameraPosition - vPosition);
+      float NdotV = max(dot(vNormal, viewDir), 0.0);
+      float limbDarkening = pow(NdotV, 0.3);
+      
+      // Animated lava distortion
+      vec4 noise = texture2D(texture1, vUv);
+      vec2 T1 = vUv + vec2(1.5, -1.5) * time * 0.02;
+      vec2 T2 = vUv + vec2(-0.5, 2.0) * time * 0.01;
+      
+      T1.x += noise.x * 2.0;
+      T1.y += noise.y * 2.0;
+      T2.x -= noise.y * 0.2;
+      T2.y += noise.z * 0.2;
+      
+      float p = texture2D(texture1, T1 * 2.0).a;
+      vec4 color = texture2D(texture2, T2 * 2.0);
+      vec4 temp = color * (vec4(p, p, p, p) * 2.0) + (color * color - 0.1);
+      
+      // Color enhancement for hot spots
+      if (temp.r > 1.0) { temp.bg += clamp(temp.r - 2.0, 0.0, 100.0); }
+      if (temp.g > 1.0) { temp.rb += temp.g - 1.0; }
+      if (temp.b > 1.0) { temp.rg += temp.b - 1.0; }
+      
+      // Apply limb darkening and boost brightness
+      vec3 finalColor = temp.rgb * limbDarkening * 1.5;
+      
+      // Add solar-orange tint
+      finalColor = mix(finalColor, finalColor * vec3(1.0, 0.7, 0.4), 0.3);
+      
+      gl_FragColor = vec4(finalColor, 1.0);
+    }
+  `;
+
+  return new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader,
+    fragmentShader,
+    transparent: false,
+  });
+}
+
