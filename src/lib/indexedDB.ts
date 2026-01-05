@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'SolarSystemDB';
-const DB_VERSION = 3; // Bumped to force re-cache with proper upgrade
+const DB_VERSION = 4; // Bumped to force re-parse with case-insensitive NEO/PHA
 const STORE_NAME = 'asteroids';
 const META_STORE = 'metadata';
 

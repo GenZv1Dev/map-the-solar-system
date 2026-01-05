@@ -43,6 +43,9 @@ function App() {
     showAsteroids: true,
     showLabels: true,
     enableBloom: true,
+    useFrustumCulling: true,
+    useLOD: true,
+    freeze: false,
   });
 
   // Load asteroid data into IndexedDB
@@ -148,6 +151,9 @@ function App() {
       sceneRef.current.setAsteroidsVisible(settings.showAsteroids);
       sceneRef.current.setLabelsVisible(settings.showLabels);
       sceneRef.current.setPostProcessingEnabled(settings.enableBloom);
+      sceneRef.current.setFrustumCullingEnabled(settings.useFrustumCulling);
+      sceneRef.current.setLODEnabled(settings.useLOD);
+      sceneRef.current.setFreeze(settings.freeze);
     }
   }, []);
 
@@ -158,6 +164,10 @@ function App() {
 
   const getSimulatedTime = useCallback(() => {
     return sceneRef.current?.getSimulatedTime() ?? 0;
+  }, []);
+
+  const getVisibleAsteroids = useCallback(() => {
+    return sceneRef.current?.getVisibleAsteroids() ?? 0;
   }, []);
 
   // Render loading screen
@@ -200,6 +210,7 @@ function App() {
         getCurrentSpeed={getCurrentSpeed}
         getSimulatedTime={getSimulatedTime}
         timeScale={timeScale}
+        getVisibleAsteroids={getVisibleAsteroids}
       />
 
       {/* Exit Focus Mode button */}

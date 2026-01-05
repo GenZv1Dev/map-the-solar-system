@@ -111,27 +111,35 @@ function estimateValueFromDiameter(diameter: number, albedo: number, className: 
   // Mass in kg (volume in km³ to m³, density g/cm³ to kg/m³)
   const massKg = volume * 1e9 * density * 1000;
   
-  // Value per kg based on composition (more realistic lower values)
-  let valuePerKg = 0.0001; // Default: rocky material, low value
+  // Value per kg based on composition with more variance
+  // Add randomness based on diameter to create natural variation
+  const varianceFactor = 0.5 + (diameter % 10) / 10; // 0.5-1.5x variance
+  
+  let valuePerKg = 0.0001 * varianceFactor; // Default: rocky material, low value
   
   if (className.startsWith('M') || albedo > 0.25) {
     // Metallic asteroids: iron, nickel, platinum group metals
-    valuePerKg = 0.5; // $/kg for precious metals content (much more conservative)
+    valuePerKg = 0.1 * varianceFactor; // $/kg for precious metals content
   } else if (className.startsWith('C') || albedo < 0.1) {
     // Carbonaceous: water, organics (valuable for space resources)
-    valuePerKg = 0.05; // $/kg for volatiles
+    valuePerKg = 0.01 * varianceFactor; // $/kg for volatiles
   } else {
     // S-type: silicates, some metals
-    valuePerKg = 0.01;
+    valuePerKg = 0.005 * varianceFactor;
   }
   
   // Calculate base value
   let value = massKg * valuePerKg;
   
-  // Reduce to more realistic numbers (most asteroids worth millions to billions, not quadrillions)
-  value = value * 0.00001;
+  // Scale down to realistic range (millions to trillions, not quadrillions)
+  // Small asteroids: millions, Large asteroids: billions/trillions
+  value = value * 0.0000001;
   
-  // Don't cap - let the numbers show natural variation
+  // Ensure minimum value for small asteroids
+  if (value < 1000000) {
+    value = Math.max(100000, value * 100); // At least $100K
+  }
+  
   return Math.round(value);
 }
 
@@ -162,7 +170,8 @@ function parseRow(row: string, headers: string[]): Partial<Asteroid> | null {
     const value = values[i];
     
     if (header === 'neo' || header === 'pha') {
-      obj[header] = value === 'Y';
+      // Parse case-insensitively for Y/N flags
+      obj[header] = value?.toUpperCase() === 'Y';
     } else if (['spkid', 'H', 'diameter', 'albedo', 'diameter_sigma', 'epoch', 'epoch_mjd',
                 'e', 'a', 'q', 'i', 'om', 'w', 'ma', 'ad', 'n', 'tp', 'per', 'per_y',
                 'moid', 'moid_ld', 'rms'].includes(header)) {

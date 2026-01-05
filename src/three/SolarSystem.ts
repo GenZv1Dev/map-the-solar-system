@@ -275,16 +275,28 @@ export class SolarSystem {
     // Load lava textures with logging
     const cloudTexture = this.loader.load(
       '/textures/lava/cloud.png',
-      (tex) => console.log('Cloud texture loaded:', tex.image?.width),
+      (tex) => {
+        console.log('Cloud texture loaded:', tex.image?.width);
+        tex.needsUpdate = true;
+        lavaMaterial.needsUpdate = true;
+      },
       undefined,
       (err) => console.error('Failed to load cloud texture:', err)
     );
     const lavaTexture = this.loader.load(
       '/textures/lava/lavatile.jpg',
-      (tex) => console.log('Lava texture loaded:', tex.image?.width),
+      (tex) => {
+        console.log('Lava texture loaded:', tex.image?.width);
+        tex.needsUpdate = true;
+        lavaMaterial.needsUpdate = true;
+      },
       undefined,
       (err) => console.error('Failed to load lava texture:', err)
     );
+    
+    // Set texture properties before creating material
+    cloudTexture.wrapS = cloudTexture.wrapT = THREE.RepeatWrapping;
+    lavaTexture.wrapS = lavaTexture.wrapT = THREE.RepeatWrapping;
     
     // Lava layer - animated magma surface
     const lavaMaterial = createLavaMaterial(cloudTexture, lavaTexture);

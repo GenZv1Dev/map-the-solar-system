@@ -27,6 +27,9 @@ export interface PerformanceSettings {
     showAsteroids: boolean;
     showLabels: boolean;
     enableBloom: boolean;
+    useFrustumCulling: boolean;
+    useLOD: boolean;
+    freeze: boolean;
 }
 
 // Format full currency value with proper separators
@@ -350,6 +353,62 @@ export function Sidebar({
                                             onChange={(e) => onPerformanceSettingsChange({
                                                 ...performanceSettings,
                                                 enableBloom: e.target.checked
+                                            })}
+                                            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
+                                        />
+                                    </label>
+
+                                    {/* Separator for Performance Controls */}
+                                    <div className="border-t border-gray-600 my-2 pt-2">
+                                        <span className="text-xs text-gray-500">Performance</span>
+                                    </div>
+
+                                    {/* Frustum Culling Toggle */}
+                                    <label className="flex items-center justify-between py-2 cursor-pointer hover:bg-gray-700/30 rounded px-2 -mx-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-xs font-mono px-1 rounded ${performanceSettings.useFrustumCulling ? 'bg-green-600' : 'bg-gray-600'}`}>BVH</span>
+                                            <span className="text-sm text-gray-300">Frustum Culling</span>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={performanceSettings.useFrustumCulling}
+                                            onChange={(e) => onPerformanceSettingsChange({
+                                                ...performanceSettings,
+                                                useFrustumCulling: e.target.checked
+                                            })}
+                                            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
+                                        />
+                                    </label>
+
+                                    {/* LOD Toggle */}
+                                    <label className="flex items-center justify-between py-2 cursor-pointer hover:bg-gray-700/30 rounded px-2 -mx-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-xs font-mono px-1 rounded ${performanceSettings.useLOD ? 'bg-blue-600' : 'bg-gray-600'}`}>LOD</span>
+                                            <span className="text-sm text-gray-300">Level of Detail</span>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={performanceSettings.useLOD}
+                                            onChange={(e) => onPerformanceSettingsChange({
+                                                ...performanceSettings,
+                                                useLOD: e.target.checked
+                                            })}
+                                            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
+                                        />
+                                    </label>
+
+                                    {/* Freeze Toggle */}
+                                    <label className="flex items-center justify-between py-2 cursor-pointer hover:bg-gray-700/30 rounded px-2 -mx-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-xs font-mono px-1 rounded ${performanceSettings.freeze ? 'bg-red-600' : 'bg-gray-600'}`}>❄</span>
+                                            <span className="text-sm text-gray-300">Freeze (Debug)</span>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={performanceSettings.freeze}
+                                            onChange={(e) => onPerformanceSettingsChange({
+                                                ...performanceSettings,
+                                                freeze: e.target.checked
                                             })}
                                             className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
                                         />

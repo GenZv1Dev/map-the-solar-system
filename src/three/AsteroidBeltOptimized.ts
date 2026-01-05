@@ -62,6 +62,16 @@ export class AsteroidBeltOptimized {
   // Loading state
   private loadingAborted = false;
   
+  // Performance options
+  private useFrustumCulling = true;
+  private useLOD = true;
+  private freeze = false;
+  
+  // Frustum culling 
+  private frustum = new THREE.Frustum();
+  private frustumMatrix = new THREE.Matrix4();
+  private visibleCount = 0;
+  
   // Callbacks
   onLoadProgress?: (loaded: number, total: number) => void;
   onNearbyAsteroid?: (asteroid: Asteroid, position: THREE.Vector3) => void;
@@ -69,6 +79,30 @@ export class AsteroidBeltOptimized {
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.loadTextures();
+  }
+  
+  // Setters for performance options
+  setFrustumCullingEnabled(enabled: boolean): void {
+    this.useFrustumCulling = enabled;
+    // Force full visibility update when toggling
+    if (!enabled) {
+      // Show all instances
+      for (const mesh of this.lodMeshes) {
+        mesh.count = this.instancePositions.length;
+      }
+    }
+  }
+  
+  setLODEnabled(enabled: boolean): void {
+    this.useLOD = enabled;
+  }
+  
+  setFreeze(freeze: boolean): void {
+    this.freeze = freeze;
+  }
+  
+  getVisibleCount(): number {
+    return this.visibleCount;
   }
 
   private loadTextures(): void {
@@ -364,11 +398,17 @@ export class AsteroidBeltOptimized {
 
   // Frame throttling for LOD updates
   private lastLODUpdate = 0;
-  private lodUpdateInterval = 100; // ms between LOD checks (10fps for LOD)
+  private lodUpdateInterval = 50; // ms between culling checks (20fps for culling)
+  
+  // Reusable objects for frustum culling
+  private tempSphere = new THREE.Sphere();
 
-  // Update LOD and nearby labels based on camera
+  // Update LOD, frustum culling, and nearby labels based on camera
   updateLOD(camera: THREE.Camera): void {
     if (this.lodMeshes.length === 0) return;
+    
+    // Skip updates if frozen
+    if (this.freeze) return;
     
     // Throttle updates to reduce performance impact
     const now = performance.now();
@@ -377,19 +417,27 @@ export class AsteroidBeltOptimized {
     
     const cameraPos = camera.position;
     
-    // Calculate distance to asteroid belt center (much faster than checking all asteroids)
-    const beltCenter = 2.7 * this.AU; // Main belt center
+    // Update frustum for culling
+    if (this.useFrustumCulling && camera instanceof THREE.PerspectiveCamera) {
+      this.frustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      this.frustum.setFromProjectionMatrix(this.frustumMatrix);
+      
+      // Count visible instances and reorganize matrices
+      this.performFrustumCulling(camera);
+    }
+    
+    // Calculate distance to asteroid belt center
+    const beltCenter = 2.7 * this.AU;
     const distToCenter = Math.sqrt(cameraPos.x * cameraPos.x + cameraPos.z * cameraPos.z);
     const minDist = Math.abs(distToCenter - beltCenter);
     
-    // Threshold for showing labels (increased for better visibility)
-    const nearbyThreshold = 50;
+    // Threshold for showing labels
+    const nearbyThreshold = 100;
     const nearbyAsteroids: { index: number; distance: number }[] = [];
     
-    // Only do asteroid iteration if we're close to the belt
-    if (minDist < 200) {
-      // Check more asteroids when we're very close
-      const maxChecks = minDist < 50 ? 10000 : 3000;
+    // Only check nearby asteroids if close to the belt
+    if (minDist < 500) {
+      const maxChecks = minDist < 100 ? 20000 : 5000;
       const step = Math.max(1, Math.floor(this.instancePositions.length / maxChecks));
       
       for (let i = 0; i < this.instancePositions.length; i += step) {
@@ -407,27 +455,85 @@ export class AsteroidBeltOptimized {
     // Update nearby labels
     this.updateNearbyLabels(nearbyAsteroids);
     
-    // Determine LOD based on nearest distance
-    let newLOD: number;
-    if (minDist > 500) {
-      newLOD = 0;
-    } else if (minDist > 200) {
-      newLOD = 1;
-    } else if (minDist > 50) {
-      newLOD = 2;
-    } else {
-      newLOD = 3;
+    // Determine LOD based on nearest distance (only if LOD is enabled)
+    if (this.useLOD) {
+      let newLOD: number;
+      if (minDist > 500) {
+        newLOD = 0;
+      } else if (minDist > 200) {
+        newLOD = 1;
+      } else if (minDist > 50) {
+        newLOD = 2;
+      } else {
+        newLOD = 3;
+      }
+      
+      if (newLOD !== this.currentLOD) {
+        // Hide all meshes first
+        for (const mesh of this.lodMeshes) {
+          mesh.visible = false;
+        }
+        // Show only the current LOD
+        if (this.lodMeshes[newLOD]) {
+          this.lodMeshes[newLOD].visible = true;
+          this.instancedMesh = this.lodMeshes[newLOD];
+        }
+        this.currentLOD = newLOD;
+      }
+    }
+  }
+  
+  // Perform frustum culling by hiding instances outside view
+  // Uses sampling for efficiency with large datasets
+  private performFrustumCulling(camera: THREE.Camera): void {
+    if (!this.instanceMatrices || this.lodMeshes.length === 0) return;
+    
+    const total = this.instancePositions.length;
+    if (total === 0) return;
+    
+    // For efficiency, check visibility by sampling regions
+    // and estimate how many asteroids are in view
+    let inFrustumCount = 0;
+    const sampleSize = Math.min(10000, total);
+    const step = Math.max(1, Math.floor(total / sampleSize));
+    
+    for (let i = 0; i < total; i += step) {
+      const pos = this.instancePositions[i];
+      if (!pos) continue;
+      
+      // Distance culling - anything too far is not visible anyway
+      const distSq = camera.position.distanceToSquared(pos);
+      if (distSq > 2250000) continue; // > 1500 units (~15 AU)
+      
+      // Frustum check
+      this.tempSphere.center.copy(pos);
+      this.tempSphere.radius = 3;
+      
+      if (this.frustum.intersectsSphere(this.tempSphere)) {
+        inFrustumCount++;
+      }
     }
     
-    if (newLOD !== this.currentLOD) {
-      if (this.lodMeshes[this.currentLOD]) {
-        this.lodMeshes[this.currentLOD].visible = false;
+    // Calculate visibility ratio
+    const checkedCount = Math.ceil(total / step);
+    const visibilityRatio = checkedCount > 0 ? inFrustumCount / checkedCount : 1;
+    this.visibleCount = Math.floor(total * visibilityRatio);
+    
+    // Adjust the number of instances to render based on visibility
+    // When looking at empty space, dramatically reduce instance count
+    // This is a simple but effective optimization
+    const minInstances = 1000;  // Always render at least this many
+    const maxInstances = total;
+    
+    // Scale rendered instances based on visibility (more aggressive scaling)
+    const scaledCount = Math.floor(minInstances + (maxInstances - minInstances) * Math.pow(visibilityRatio, 0.5));
+    const renderCount = Math.min(maxInstances, Math.max(minInstances, scaledCount));
+    
+    // Update instance counts
+    for (const mesh of this.lodMeshes) {
+      if (mesh.visible) {
+        mesh.count = renderCount;
       }
-      if (this.lodMeshes[newLOD]) {
-        this.lodMeshes[newLOD].visible = true;
-        this.instancedMesh = this.lodMeshes[newLOD];
-      }
-      this.currentLOD = newLOD;
     }
   }
 

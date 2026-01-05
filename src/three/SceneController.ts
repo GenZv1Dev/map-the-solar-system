@@ -415,6 +415,11 @@ export class SceneController {
     return this.solarSystem.getSimulatedTime();
   }
 
+  // Get visible asteroid count (from frustum culling)
+  getVisibleAsteroids(): number {
+    return this.asteroidBelt.getVisibleCount();
+  }
+
   // Toggle asteroid belt visibility
   setAsteroidsVisible(visible: boolean): void {
     if (this.asteroidBelt.instancedMesh) {
@@ -436,6 +441,21 @@ export class SceneController {
   // Toggle labels visibility
   setLabelsVisible(visible: boolean): void {
     this.labelSystem.setVisible(visible);
+  }
+
+  // Toggle frustum culling for asteroids
+  setFrustumCullingEnabled(enabled: boolean): void {
+    this.asteroidBelt.setFrustumCullingEnabled(enabled);
+  }
+
+  // Toggle LOD for asteroids
+  setLODEnabled(enabled: boolean): void {
+    this.asteroidBelt.setLODEnabled(enabled);
+  }
+
+  // Freeze updates (for debugging visibility)
+  setFreeze(freeze: boolean): void {
+    this.asteroidBelt.setFreeze(freeze);
   }
 
   private update(): void {

@@ -5,10 +5,10 @@ export class FlyControls {
   domElement: HTMLElement;
   
   // Movement
-  movementSpeed = 0.003; // Base speed (100x slower for fine control)
+  movementSpeed = 0.0003; // Base speed (1000x slower for fine control)
   rollSpeed = 0.5;
-  maxBoostMultiplier = 200; // Maximum boost when holding shift
-  boostAcceleration = 0.3; // How fast boost builds up per second
+  maxBoostMultiplier = 500; // Maximum boost when holding shift
+  boostAcceleration = 0.5; // How fast boost builds up per second
   
   // State
   private moveState = {

@@ -4,6 +4,7 @@ interface HUDProps {
   getCurrentSpeed: () => number;
   getSimulatedTime: () => number;
   timeScale: number;
+  getVisibleAsteroids?: () => number;
 }
 
 // Format speed as simple number (AU units per frame)
@@ -47,19 +48,23 @@ function getSimulatedDate(simulatedSeconds: number): Date {
   return new Date(startDate.getTime() + simulatedMs);
 }
 
-export function HUD({ getCurrentSpeed, getSimulatedTime, timeScale }: HUDProps) {
+export function HUD({ getCurrentSpeed, getSimulatedTime, timeScale, getVisibleAsteroids }: HUDProps) {
   const [speed, setSpeed] = useState(0);
   const [simulatedTime, setSimulatedTime] = useState(0);
+  const [visibleAsteroids, setVisibleAsteroids] = useState(0);
   
   // Update at 10fps for smooth display
   useEffect(() => {
     const interval = setInterval(() => {
       setSpeed(getCurrentSpeed());
       setSimulatedTime(getSimulatedTime());
+      if (getVisibleAsteroids) {
+        setVisibleAsteroids(getVisibleAsteroids());
+      }
     }, 100);
     
     return () => clearInterval(interval);
-  }, [getCurrentSpeed, getSimulatedTime]);
+  }, [getCurrentSpeed, getSimulatedTime, getVisibleAsteroids]);
   
   const timeBreakdown = formatSimulatedTime(simulatedTime);
   const simulatedDate = getSimulatedDate(simulatedTime);
@@ -97,7 +102,7 @@ export function HUD({ getCurrentSpeed, getSimulatedTime, timeScale }: HUDProps) 
       </div>
       
       {/* Simulated Date */}
-      <div>
+      <div className="mb-2">
         <div className="text-xs text-gray-500 uppercase tracking-wider">Sim. Date</div>
         <div className="text-sm font-mono text-green-400">
           {simulatedDate.toLocaleDateString('en-US', { 
@@ -114,6 +119,16 @@ export function HUD({ getCurrentSpeed, getSimulatedTime, timeScale }: HUDProps) 
           })}
         </div>
       </div>
+      
+      {/* Visible Asteroids (frustum culling indicator) */}
+      {getVisibleAsteroids && visibleAsteroids > 0 && (
+        <div>
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Visible</div>
+          <div className="text-sm font-mono text-orange-400">
+            {visibleAsteroids.toLocaleString()} asteroids
+          </div>
+        </div>
+      )}
     </div>
   );
 }
