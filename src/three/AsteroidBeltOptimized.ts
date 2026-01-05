@@ -310,7 +310,9 @@ export class AsteroidBeltOptimized {
       const material = i === 3 ? highLODMaterial : baseMaterial.clone();
       const mesh = new THREE.InstancedMesh(lodGeometries[i], material, total);
       mesh.name = `AsteroidBelt_LOD${i}`;
-      mesh.frustumCulled = true;
+      // IMPORTANT: Disable Three.js frustum culling - we handle it manually
+      // Three.js uses bounding sphere which covers entire belt and always returns "visible"
+      mesh.frustumCulled = false;
       mesh.visible = (i === 1);
       this.lodMeshes.push(mesh);
     }
@@ -385,11 +387,12 @@ export class AsteroidBeltOptimized {
     
     if (this.loadingAborted || this.lodMeshes.length === 0) return;
     
-    // Apply colors
+    // Apply colors and compute bounding spheres
     const colorAttr = new THREE.InstancedBufferAttribute(this.instanceColors!, 3);
     for (const mesh of this.lodMeshes) {
       mesh.geometry.setAttribute('color', colorAttr.clone());
       mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
       this.scene.add(mesh);
     }
     
@@ -402,13 +405,15 @@ export class AsteroidBeltOptimized {
   
   // Reusable objects for frustum culling
   private tempSphere = new THREE.Sphere();
+  private cameraDirection = new THREE.Vector3();
+  
+  // Frozen visibility state - stores visibility of each LOD mesh when frozen
+  private frozenVisibility: Map<THREE.InstancedMesh, boolean> = new Map();
+  private wasFrozen = false; // Track if we were frozen last frame
 
   // Update LOD, frustum culling, and nearby labels based on camera
   updateLOD(camera: THREE.Camera): void {
     if (this.lodMeshes.length === 0) return;
-    
-    // Skip updates if frozen
-    if (this.freeze) return;
     
     // Throttle updates to reduce performance impact
     const now = performance.now();
@@ -417,13 +422,16 @@ export class AsteroidBeltOptimized {
     
     const cameraPos = camera.position;
     
-    // Update frustum for culling
-    if (this.useFrustumCulling && camera instanceof THREE.PerspectiveCamera) {
-      this.frustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-      this.frustum.setFromProjectionMatrix(this.frustumMatrix);
-      
-      // Count visible instances and reorganize matrices
-      this.performFrustumCulling(camera);
+    // Perform direction-based culling for asteroid belt
+    if (this.useFrustumCulling) {
+      this.performDirectionCulling(camera);
+    } else {
+      // Show all meshes when culling disabled
+      for (const mesh of this.lodMeshes) {
+        mesh.visible = true;
+        mesh.count = this.instancePositions.length;
+      }
+      this.visibleCount = this.instancePositions.length;
     }
     
     // Calculate distance to asteroid belt center
@@ -456,7 +464,7 @@ export class AsteroidBeltOptimized {
     this.updateNearbyLabels(nearbyAsteroids);
     
     // Determine LOD based on nearest distance (only if LOD is enabled)
-    if (this.useLOD) {
+    if (this.useLOD && !this.freeze) {
       let newLOD: number;
       if (minDist > 500) {
         newLOD = 0;
@@ -473,7 +481,7 @@ export class AsteroidBeltOptimized {
         for (const mesh of this.lodMeshes) {
           mesh.visible = false;
         }
-        // Show only the current LOD
+        // Show only the current LOD (if culling allows)
         if (this.lodMeshes[newLOD]) {
           this.lodMeshes[newLOD].visible = true;
           this.instancedMesh = this.lodMeshes[newLOD];
@@ -483,58 +491,91 @@ export class AsteroidBeltOptimized {
     }
   }
   
-  // Perform frustum culling by hiding instances outside view
-  // Uses sampling for efficiency with large datasets
-  private performFrustumCulling(camera: THREE.Camera): void {
-    if (!this.instanceMatrices || this.lodMeshes.length === 0) return;
+  // Direction-based culling - hide entire belt when looking away from the XZ plane
+  private performDirectionCulling(camera: THREE.Camera): void {
+    if (this.lodMeshes.length === 0) return;
     
-    const total = this.instancePositions.length;
-    if (total === 0) return;
+    // Handle freeze mode - capture and maintain visibility
+    if (this.freeze) {
+      if (!this.wasFrozen) {
+        this.frozenVisibility.clear();
+        for (const mesh of this.lodMeshes) {
+          this.frozenVisibility.set(mesh, mesh.visible);
+        }
+        this.wasFrozen = true;
+      }
+      return;
+    }
     
-    // For efficiency, check visibility by sampling regions
-    // and estimate how many asteroids are in view
-    let inFrustumCount = 0;
-    const sampleSize = Math.min(10000, total);
-    const step = Math.max(1, Math.floor(total / sampleSize));
+    if (this.wasFrozen) {
+      this.wasFrozen = false;
+      this.frozenVisibility.clear();
+    }
     
-    for (let i = 0; i < total; i += step) {
-      const pos = this.instancePositions[i];
-      if (!pos) continue;
+    // Get camera forward direction
+    camera.getWorldDirection(this.cameraDirection);
+    const cameraPos = camera.position;
+    
+    // The asteroid belt is in the XZ plane (Y ≈ 0)
+    // If camera is looking mostly up (dir.y > threshold) or mostly down (dir.y < -threshold),
+    // AND camera is above/below the belt plane, the belt is NOT in view
+    
+    const dirY = Math.abs(this.cameraDirection.y);
+    const camHeight = Math.abs(cameraPos.y);
+    
+    // Check if we're looking away from the XZ plane
+    // If looking more than ~60 degrees up/down (dirY > 0.85) and not in the belt plane
+    const lookingAway = dirY > 0.85 && camHeight > 20;
+    
+    // Also check actual frustum intersection with belt plane
+    // The belt extends from 2.2 AU to 3.2 AU in XZ, at Y≈0
+    let beltInFrustum = false;
+    
+    if (!lookingAway) {
+      // Only do frustum check if not obviously looking away
+      this.frustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      this.frustum.setFromProjectionMatrix(this.frustumMatrix);
       
-      // Distance culling - anything too far is not visible anyway
-      const distSq = camera.position.distanceToSquared(pos);
-      if (distSq > 2250000) continue; // > 1500 units (~15 AU)
+      // Check if any part of the belt ring intersects the frustum
+      // Sample points along the belt, but only in the camera's forward hemisphere
+      const camAngle = Math.atan2(this.cameraDirection.z, this.cameraDirection.x);
+      const beltCenterDist = 2.7 * this.AU;
       
-      // Frustum check
-      this.tempSphere.center.copy(pos);
-      this.tempSphere.radius = 3;
-      
-      if (this.frustum.intersectsSphere(this.tempSphere)) {
-        inFrustumCount++;
+      // Check 5 points in a 120-degree arc in front of camera
+      for (let i = -2; i <= 2; i++) {
+        const angle = camAngle + (i * Math.PI / 6); // 30 degrees apart
+        const samplePoint = new THREE.Vector3(
+          Math.cos(angle) * beltCenterDist,
+          0,
+          Math.sin(angle) * beltCenterDist
+        );
+        
+        this.tempSphere.center.copy(samplePoint);
+        this.tempSphere.radius = 100;
+        
+        if (this.frustum.intersectsSphere(this.tempSphere)) {
+          beltInFrustum = true;
+          break;
+        }
       }
     }
     
-    // Calculate visibility ratio
-    const checkedCount = Math.ceil(total / step);
-    const visibilityRatio = checkedCount > 0 ? inFrustumCount / checkedCount : 1;
-    this.visibleCount = Math.floor(total * visibilityRatio);
+    // Camera inside belt always sees it
+    const camDist = Math.sqrt(cameraPos.x * cameraPos.x + cameraPos.z * cameraPos.z);
+    const insideBelt = camDist > 1.8 * this.AU && camDist < 3.5 * this.AU && camHeight < 50;
     
-    // Adjust the number of instances to render based on visibility
-    // When looking at empty space, dramatically reduce instance count
-    // This is a simple but effective optimization
-    const minInstances = 1000;  // Always render at least this many
-    const maxInstances = total;
+    const shouldShow = insideBelt || (!lookingAway && beltInFrustum);
     
-    // Scale rendered instances based on visibility (more aggressive scaling)
-    const scaledCount = Math.floor(minInstances + (maxInstances - minInstances) * Math.pow(visibilityRatio, 0.5));
-    const renderCount = Math.min(maxInstances, Math.max(minInstances, scaledCount));
-    
-    // Update instance counts
+    // Update all LOD meshes
     for (const mesh of this.lodMeshes) {
-      if (mesh.visible) {
-        mesh.count = renderCount;
-      }
+      mesh.visible = shouldShow;
+      mesh.count = shouldShow ? this.instancePositions.length : 0;
     }
+    
+    this.visibleCount = shouldShow ? this.instancePositions.length : 0;
+    
+    // Debug
+    console.log(`Belt: show=${shouldShow}, lookAway=${lookingAway}, inFrustum=${beltInFrustum}, inside=${insideBelt}, dirY=${this.cameraDirection.y.toFixed(2)}`);
   }
 
   private updateNearbyLabels(nearbyAsteroids: { index: number; distance: number }[]): void {
@@ -688,6 +729,14 @@ export function createDecorativeBelt(
   }
   
   mesh.instanceMatrix.needsUpdate = true;
+  
+  // Compute bounding sphere for frustum culling
+  mesh.computeBoundingSphere();
+  
+  // Disable Three.js frustum culling - we handle it manually in SceneController
+  // Three.js's bounding sphere covers the entire ring and always returns visible
+  mesh.frustumCulled = false;
+  
   scene.add(mesh);
   
   return mesh;

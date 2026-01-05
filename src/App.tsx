@@ -105,6 +105,15 @@ function App() {
     sceneRef.current = controller;
     setNavigationItems(controller.getNavigationItems());
     
+    // Apply initial performance settings (using defaults, not state, to avoid dependency issues)
+    // Settings state starts with these defaults and user changes go through handlePerformanceSettingsChange
+    controller.setFrustumCullingEnabled(true);
+    controller.setLODEnabled(true);
+    controller.setFreeze(false);
+    controller.setAsteroidsVisible(true);
+    controller.setLabelsVisible(true);
+    controller.setPostProcessingEnabled(true);
+    
     // Load asteroids progressively (after scene is visible)
     getAllAsteroids().then(allAsteroids => {
       controller.loadAsteroids(allAsteroids);

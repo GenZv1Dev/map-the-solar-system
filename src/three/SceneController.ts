@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import Stats from 'three/addons/libs/stats.module.js';
 import { SolarSystem, AU } from './SolarSystem';
-import { AsteroidBeltOptimized, createDecorativeBelt } from './AsteroidBeltOptimized';
+import { AsteroidBeltBVH } from './AsteroidBeltBVH';
+import { createDecorativeBelt } from './AsteroidBeltOptimized';
 import { BlackHole } from './BlackHole';
 import { Label3DSystem } from './Label3D';
 import { FlyControls } from './FlyControls';
@@ -27,7 +28,7 @@ export class SceneController {
   private stats: Stats;
   
   private solarSystem: SolarSystem;
-  private asteroidBelt: AsteroidBeltOptimized;
+  private asteroidBelt: AsteroidBeltBVH;
   private blackHole: BlackHole;
   private labelSystem: Label3DSystem;
   private solarFlares: SolarFlares;
@@ -43,6 +44,13 @@ export class SceneController {
   
   // Post-processing toggle
   private usePostProcessing = true;
+  
+  // Frustum culling for entire scene
+  private frustum = new THREE.Frustum();
+  private frustumMatrix = new THREE.Matrix4();
+  private useFrustumCulling = true;
+  private freeze = false;
+  private visibleObjectCount = 0;
   
   // Tracking mode
   private trackingTarget: string | null = null;
@@ -110,8 +118,8 @@ export class SceneController {
     // Create solar flares (particle explosions from the sun)
     this.solarFlares = new SolarFlares(this.scene, new THREE.Vector3(0, 0, 0));
     
-    // Create asteroid belt manager (optimized with InstancedMesh)
-    this.asteroidBelt = new AsteroidBeltOptimized(this.scene);
+    // Create asteroid belt manager (using BatchedMesh + BVH for proper frustum culling)
+    this.asteroidBelt = new AsteroidBeltBVH(this.scene);
     this.asteroidBelt.onLoadProgress = (loaded: number, total: number) => {
       this.onAsteroidLoadProgress?.(loaded, total);
     };
@@ -415,15 +423,16 @@ export class SceneController {
     return this.solarSystem.getSimulatedTime();
   }
 
-  // Get visible asteroid count (from frustum culling)
+  // Get visible object count (from frustum culling)
   getVisibleAsteroids(): number {
-    return this.asteroidBelt.getVisibleCount();
+    // Return combined count: asteroids + other visible objects
+    return this.asteroidBelt.getVisibleCount() + this.visibleObjectCount;
   }
 
   // Toggle asteroid belt visibility
   setAsteroidsVisible(visible: boolean): void {
-    if (this.asteroidBelt.instancedMesh) {
-      this.asteroidBelt.instancedMesh.visible = visible;
+    if (this.asteroidBelt.batchedMesh) {
+      this.asteroidBelt.batchedMesh.visible = visible;
     }
     if (this.mainBelt) {
       this.mainBelt.visible = visible;
@@ -443,9 +452,15 @@ export class SceneController {
     this.labelSystem.setVisible(visible);
   }
 
-  // Toggle frustum culling for asteroids
+  // Toggle frustum culling for entire scene
   setFrustumCullingEnabled(enabled: boolean): void {
+    this.useFrustumCulling = enabled;
     this.asteroidBelt.setFrustumCullingEnabled(enabled);
+    
+    // If disabling, show all objects
+    if (!enabled) {
+      this.showAllObjects();
+    }
   }
 
   // Toggle LOD for asteroids
@@ -455,7 +470,142 @@ export class SceneController {
 
   // Freeze updates (for debugging visibility)
   setFreeze(freeze: boolean): void {
+    this.freeze = freeze;
     this.asteroidBelt.setFreeze(freeze);
+  }
+  
+  // Show all scene objects (when culling disabled)
+  private showAllObjects(): void {
+    this.scene.traverse((object) => {
+      if (object instanceof THREE.Mesh || object instanceof THREE.InstancedMesh || object instanceof THREE.Sprite) {
+        object.visible = true;
+      }
+    });
+  }
+  
+  // Reusable temp sphere for frustum checks
+  private tempSphere = new THREE.Sphere();
+  private cameraDirection = new THREE.Vector3();
+  
+  // Check if camera is looking at the XZ plane (where belts/asteroids are)
+  private isLookingAtXZPlane(): boolean {
+    this.camera.getWorldDirection(this.cameraDirection);
+    const dirY = Math.abs(this.cameraDirection.y);
+    const camHeight = Math.abs(this.camera.position.y);
+    
+    // If looking more than ~60 degrees up/down and above the plane, not looking at XZ
+    return !(dirY > 0.85 && camHeight > 20);
+  }
+  
+  // Perform frustum culling on all scene objects
+  private performSceneCulling(): void {
+    if (!this.useFrustumCulling || this.freeze) return;
+    
+    // Update frustum from camera
+    this.camera.updateMatrixWorld();
+    this.frustumMatrix.multiplyMatrices(
+      this.camera.projectionMatrix,
+      this.camera.matrixWorldInverse
+    );
+    this.frustum.setFromProjectionMatrix(this.frustumMatrix);
+    
+    let visibleCount = 0;
+    const cameraPos = this.camera.position;
+    
+    // Quick check: are we looking at the XZ plane at all?
+    const lookingAtXZ = this.isLookingAtXZPlane();
+    
+    // Decorative belts - only visible if looking at XZ plane
+    if (this.mainBelt) {
+      this.mainBelt.visible = lookingAtXZ;
+      this.mainBelt.count = lookingAtXZ ? 30000 : 0;
+      if (lookingAtXZ) visibleCount++;
+    }
+    
+    if (this.kuiperBelt) {
+      this.kuiperBelt.visible = lookingAtXZ;
+      this.kuiperBelt.count = lookingAtXZ ? 50000 : 0;
+      if (lookingAtXZ) visibleCount++;
+    }
+    
+    // Traverse scene and cull ALL objects
+    this.scene.traverse((object) => {
+      // Skip the scene itself
+      if (object === this.scene) return;
+      
+      // Skip decorative belts (handled above)
+      if (object === this.mainBelt || object === this.kuiperBelt) return;
+      
+      // Skip asteroid belt LOD meshes (handled by AsteroidBeltOptimized)
+      if (object.name.startsWith('AsteroidBelt')) return;
+      
+      // Skip starfield (always visible - it's the background)
+      if (object.name === 'Starfield') return;
+      
+      // Handle renderable objects
+      if (object instanceof THREE.Mesh || 
+          object instanceof THREE.Sprite || 
+          object instanceof THREE.Points ||
+          object instanceof THREE.Line) {
+        
+        // Get world position
+        const worldPos = new THREE.Vector3();
+        object.getWorldPosition(worldPos);
+        
+        // Get bounding radius
+        let radius = 10;
+        if (object instanceof THREE.Mesh && object.geometry.boundingSphere) {
+          object.geometry.computeBoundingSphere();
+          radius = object.geometry.boundingSphere.radius * Math.max(
+            object.scale.x, object.scale.y, object.scale.z
+          );
+        } else if (object instanceof THREE.Sprite) {
+          radius = Math.max(object.scale.x, object.scale.y) / 2;
+        }
+        
+        // Frustum check
+        this.tempSphere.center.copy(worldPos);
+        this.tempSphere.radius = Math.max(radius, 1);
+        
+        const inFrustum = this.frustum.intersectsSphere(this.tempSphere);
+        
+        // Distance check - cull very far objects (except Sun)
+        const distSq = cameraPos.distanceToSquared(worldPos);
+        const maxDistSq = 1000000000; // ~31623 units
+        const inRange = distSq < maxDistSq || object.name === 'Sun';
+        
+        object.visible = inFrustum && inRange;
+        
+        if (object.visible) {
+          visibleCount++;
+        }
+      }
+      
+      // Handle InstancedMesh (rings, etc.) - NOT the main asteroid belts
+      if (object instanceof THREE.InstancedMesh && 
+          object !== this.mainBelt && 
+          object !== this.kuiperBelt &&
+          !object.name.startsWith('AsteroidBelt')) {
+        
+        const worldPos = new THREE.Vector3();
+        object.getWorldPosition(worldPos);
+        
+        this.tempSphere.center.copy(worldPos);
+        this.tempSphere.radius = 500; // Generous radius for rings
+        
+        const inFrustum = this.frustum.intersectsSphere(this.tempSphere);
+        object.visible = inFrustum;
+        
+        // Also set count to 0 if not visible
+        if (!inFrustum) {
+          object.count = 0;
+        }
+        
+        if (inFrustum) visibleCount++;
+      }
+    });
+    
+    this.visibleObjectCount = visibleCount;
   }
 
   private update(): void {
@@ -522,6 +672,9 @@ export class SceneController {
     
     // Update all labels (scale based on camera distance)
     this.labelSystem.update();
+    
+    // Perform frustum culling on entire scene
+    this.performSceneCulling();
     
     // Render with or without post-processing
     if (this.usePostProcessing) {

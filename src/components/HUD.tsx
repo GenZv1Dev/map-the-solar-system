@@ -120,12 +120,12 @@ export function HUD({ getCurrentSpeed, getSimulatedTime, timeScale, getVisibleAs
         </div>
       </div>
       
-      {/* Visible Asteroids (frustum culling indicator) */}
-      {getVisibleAsteroids && visibleAsteroids > 0 && (
+      {/* Visible Objects (frustum culling indicator) */}
+      {getVisibleAsteroids && (
         <div>
-          <div className="text-xs text-gray-500 uppercase tracking-wider">Visible</div>
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Visible Objects</div>
           <div className="text-sm font-mono text-orange-400">
-            {visibleAsteroids.toLocaleString()} asteroids
+            {visibleAsteroids.toLocaleString()}
           </div>
         </div>
       )}
