@@ -48,19 +48,29 @@ let dbInstance: IDBPDatabase | null = null;
 async function getDB() {
   if (dbInstance) return dbInstance;
   
+  // First, check if we need to delete the old database
+  const databases = await indexedDB.databases?.() || [];
+  const existingDB = databases.find(db => db.name === DB_NAME);
+  
+  if (existingDB && existingDB.version !== DB_VERSION) {
+    console.log(`DB version mismatch (${existingDB.version} vs ${DB_VERSION}), deleting old database...`);
+    await new Promise<void>((resolve, reject) => {
+      const deleteRequest = indexedDB.deleteDatabase(DB_NAME);
+      deleteRequest.onsuccess = () => {
+        console.log('Old database deleted successfully');
+        resolve();
+      };
+      deleteRequest.onerror = () => reject(deleteRequest.error);
+      deleteRequest.onblocked = () => {
+        console.warn('Delete blocked, proceeding anyway...');
+        resolve();
+      };
+    });
+  }
+  
   dbInstance = await openDB(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion, newVersion) {
-      console.log(`Upgrading DB from version ${oldVersion} to ${newVersion}`);
-      
-      // Delete old stores if upgrading from older version
-      if (oldVersion > 0 && oldVersion < DB_VERSION) {
-        if (db.objectStoreNames.contains(STORE_NAME)) {
-          db.deleteObjectStore(STORE_NAME);
-        }
-        if (db.objectStoreNames.contains(META_STORE)) {
-          db.deleteObjectStore(META_STORE);
-        }
-      }
+    upgrade(db) {
+      console.log('Creating fresh database stores...');
       
       // Asteroids store with indexes
       if (!db.objectStoreNames.contains(STORE_NAME)) {
