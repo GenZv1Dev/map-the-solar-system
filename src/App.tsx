@@ -23,7 +23,6 @@ function App() {
   const isLoadingStarted = useRef(false);
 
   // Data state
-  const [asteroids, setAsteroids] = useState<Asteroid[]>([]);
   const [statistics, setStatistics] = useState({
     totalCount: 0,
     totalValue: 0,
@@ -99,7 +98,6 @@ function App() {
     
     // Load asteroids progressively (after scene is visible)
     getAllAsteroids().then(allAsteroids => {
-      setAsteroids(allAsteroids);
       controller.loadAsteroids(allAsteroids);
     });
     

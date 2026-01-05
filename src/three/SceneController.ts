@@ -6,6 +6,7 @@ import { BlackHole } from './BlackHole';
 import { Label3DSystem } from './Label3D';
 import { FlyControls } from './FlyControls';
 import { SolarFlares } from './SolarFlares';
+import { PostProcessing, createSunLensFlare } from './PostProcessing';
 import { type Asteroid } from '../lib/indexedDB';
 
 export interface SceneConfig {
@@ -30,6 +31,8 @@ export class SceneController {
   private blackHole: BlackHole;
   private labelSystem: Label3DSystem;
   private solarFlares: SolarFlares;
+  private postProcessing: PostProcessing;
+  private sunLensFlare: { lensflare: THREE.Object3D; light: THREE.PointLight } | null = null;
   
   // Decorative belts
   private mainBelt: THREE.InstancedMesh | null = null;
@@ -37,6 +40,9 @@ export class SceneController {
   
   private isRunning = false;
   private animationId: number | null = null;
+  
+  // Post-processing toggle
+  private usePostProcessing = true;
   
   // Tracking mode
   private trackingTarget: string | null = null;
@@ -123,6 +129,20 @@ export class SceneController {
     // Create label system (3D sprite-based labels)
     this.labelSystem = new Label3DSystem(this.scene, this.camera);
     this.createLabels();
+    
+    // Create post-processing (bloom effects)
+    this.postProcessing = new PostProcessing({
+      scene: this.scene,
+      camera: this.camera,
+      renderer: this.renderer,
+    });
+    
+    // Add lens flare to the sun
+    this.sunLensFlare = createSunLensFlare(
+      this.scene,
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Color(0xffffee)
+    );
     
     // Event listeners
     window.addEventListener('resize', this.handleResize);
@@ -243,6 +263,7 @@ export class SceneController {
     this.camera.updateProjectionMatrix();
     
     this.renderer.setSize(width, height);
+    this.postProcessing.setSize(width, height);
   };
 
   async loadAsteroids(asteroids: Asteroid[]): Promise<void> {
@@ -413,7 +434,12 @@ export class SceneController {
     // Update all labels (scale based on camera distance)
     this.labelSystem.update();
     
-    this.renderer.render(this.scene, this.camera);
+    // Render with or without post-processing
+    if (this.usePostProcessing) {
+      this.postProcessing.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
     this.stats.update();
   }
 
@@ -466,6 +492,16 @@ export class SceneController {
     return items;
   }
 
+  // Toggle post-processing effects
+  setPostProcessing(enabled: boolean): void {
+    this.usePostProcessing = enabled;
+  }
+
+  // Adjust bloom parameters
+  setBloomParams(params: { threshold?: number; strength?: number; radius?: number }): void {
+    this.postProcessing.setBloomParams(params);
+  }
+
   dispose(): void {
     this.stop();
     
@@ -476,6 +512,11 @@ export class SceneController {
     this.asteroidBelt.dispose();
     this.blackHole.dispose();
     this.solarFlares.dispose();
+    this.postProcessing.dispose();
+    
+    if (this.sunLensFlare) {
+      this.scene.remove(this.sunLensFlare.light);
+    }
     
     this.renderer.dispose();
     this.container.removeChild(this.renderer.domElement);

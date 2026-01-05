@@ -131,3 +131,58 @@ when I fly into an astreoid it gets back to the focused planet it needs t releas
 it gets stuck on loaded 0 / 958,524 and then it gets stuck at Loaded 958,524 asteroids so clearly something isn't working good, after a long time it does load, but like you'd expect there to be a proper loading, even if you have to request frame for every asteroids instead of loading so many... load them slowly.. chill with it..
 
 also the fps is very low we need to bring over optimization techniques from the batch lod bvh example, there we could load 500k objects without any fps drops because of camera culling and you can even test it with the controls and LOD for each object.. also add an fps meter and the controls from the webgl_batch_lod_bvh example
+
+ops we got some errors, also start implementing the plans for the future
+
+it looks like all the astreoids aren't loading.. maybe the error on the bottom has something to do with it..
+
+We are still missing the webgl_batch_lod_bvh controls ui
+
+the bloom on earth is too strong and light is too strong
+
+the time speed is still stuck on 0 you forgot to make the time speed a little bit moving like 0.0084x or something more realistic but anything above that is clearly too fast
+
+the app is already running never run pnpm dev
+
+still got this issue: it gets stuck on loaded 0 / 958,524 and then it gets stuck at Loaded 958,524 asteroids so clearly something isn't working good, after a long time it does load, but like you'd expect there to be a proper loading, even if you have to request frame for every asteroids instead of loading so many... load them slowly.. chill with it.. even if you need to load them 1 per 10ms... and update the ui 1 by 1...
+
+some astreoids that I zoom at doesn't show, when I fly to an astreoid spawn a 3d label text while I'm near it..
+
+some planets still missing their rings, and the moons are literally inside the sun, this is their names: Callisto
+Titan
+Ganymede
+
+basically all the moons they are not around their planets they are inside the sun
+
+when you fix that continue implementing the the future
+
+we get a huge lag spike after load and this error:
+Uncaught (in promise) RangeError: Array buffer allocation failed
+    at new ArrayBuffer (<anonymous>)
+    at new Float32Array (<anonymous>)
+    at BatchedMesh._initializeGeometry (chunk-2RMEXNE5.js?v=8ff7856c:15402:26)
+    at BatchedMesh.addGeometry (chunk-2RMEXNE5.js?v=8ff7856c:15556:10)
+    at AsteroidBeltOptimized.loadAsteroids (AsteroidBeltOptimized.ts:166:40)
+    at async SceneController.loadAsteroids (SceneController.ts:270:5)
+_initializeGeometry @ chunk-2RMEXNE5.js?v=8ff7856c:15402
+addGeometry @ chunk-2RMEXNE5.js?v=8ff7856c:15556
+loadAsteroids @ AsteroidBeltOptimized.ts:166
+await in loadAsteroids
+loadAsteroids @ SceneController.ts:270
+(anonymous) @ App.tsx:101
+Promise.then
+(anonymous) @ App.tsx:100
+react_stack_bottom_frame @ react-dom_client.js?v=8ff7856c:18821
+runWithFiberInDEV @ react-dom_client.js?v=8ff7856c:1251
+commitHookEffectListMount @ react-dom_client.js?v=8ff7856c:9665
+commitHookPassiveMountEffects @ react-dom_client.js?v=8ff7856c:9719
+commitPassiveMountOnFiber @ react-dom_client.js?v=8ff7856c:11294
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=8ff7856c:11264
+commitPassiveMountOnFiber @ react-dom_client.js?v=8ff7856c:11455
+recursivelyTraversePassiveMountEffects @ react-dom_client.js?v=8ff7856c:11264
+commitPassiveMountOnFiber @ react-dom_client.js?v=8ff7856c:11320
+flushPassiveEffects @ react-dom_client.js?v=8ff7856c:13404
+(anonymous) @ react-dom_client.js?v=8ff7856c:13030
+performWorkUntilDeadline @ react-dom_client.js?v=8ff7856c:33Understand this error
+App.tsx:80 Selected: Ceres
+App.tsx:80 Selected: Gratia
